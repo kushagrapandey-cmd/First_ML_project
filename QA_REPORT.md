@@ -1,83 +1,42 @@
-# YTGuide repair verification — 27 October 2026
+# YTGuide verification — 26 October 2026
 
-## Release state
+## Current release
 
-**Direct Vercel production deployment is READY:** `dpl_AoZi1GT1SExCaqBYrLUghBBvNFuA`, serving `https://ytguide-five.vercel.app/`, source through local commit `814a8d6`. GitHub main now includes repair commit `b6770f2f3171261ed78645760c793765069a2664`, and Vercel deployment `dpl_EwD5jV97EanwXDVtR5s4qt8xDEwj` is READY from that commit.
+Both approved phases are implemented and published to GitHub main. Phase 1 production deployment `dpl_HoieJMeeN156W9pHtWEypsPVsPqZ` passed before Phase 2 was released. Phase 2 production deployment `dpl_EyRfFaZryFruwKjd7xqFDyVB4pFV` is READY and serves https://ytguide-five.vercel.app/ from GitHub commit `0c835aa8d7b2f435af7655b5c03835f06fed0d10`. GitHub Actions run `40399728344` passed for that commit.
 
-**Live search passes; the trusted-origin blocker is corrected.** Neon production branch `br-patient-smoke-b3nu96v6` initially had an empty domain allowlist. Added the exact production origin and verified it by reading the allowlist back. A subsequent secure owner-provided sign-in attempt returned **Invalid email or password**. No successful authenticated cloud-persistence flow is claimed.
+The first Phase 2 build failed because root dependency autodetection used Python 3.14. An explicit Node install command now lets the Python function builder select the committed Python 3.12 version. The subsequent production build passed. Build logs measured a 292.83 MB bundle before platform optimization; the platform accepted and deployed it. No paid inference service, plan upgrade or large-function override was enabled.
 
-## Live checks performed after deployment
+## Verified behaviour
 
-- `/api/recommend?action=meta`: HTTP 200, `liveConfigured: true`.
-- `/api/workspace?action=config`: HTTP 200, accounts configured, `guestMode: false`.
-- Anonymous `/api/workspace`: HTTP 401.
-- Python decorators: five topic-specific live results from 22 matching candidates, confirmed in the browser.
-- SQL joins: five distinct live results from 19 matching candidates, confirmed through the form and API.
-- Other topic / Kubernetes networking: five live results from 25 matching candidates via the real key.
-- Signed-out Save opens sign-in; workspace stays at zero saved lessons.
-- Reload preserves SQL / joins / Live YouTube and the current workspace page. It does not reset to Python.
-- Lesson dialog opens, guest notes remain disabled, a YouTube iframe loads, About navigation and the focus timer work. Iframe creation does not prove uninterrupted media playback in every region.
-- Actual secure sign-in after the domain fix: **Invalid email or password**. The provider now accepts the site origin. The submitted credentials did not establish a session.
-- Runtime error/warning scan returned Node `url.parse()` deprecation warnings from the platform runtime. No application exception appeared in the returned records. This is a limited log-window observation, not a proof of zero future failures.
-- Re-ran all 44 automated checks and syntax checks after deployment; passed.
+- Specific goals participate in YouTube retrieval, cache keys and ranking. Live decorators and Kubernetes deployment searches returned distinct, relevant lessons using the configured server-side key.
+- Hindi-script goals are accepted. Production catalogue query “दो तालिकाओं को जोड़ना” ranked SQL joins first; browser results confirmed the same semantic match.
+- All three production requests returned `ranking: hybrid` and the actual multilingual MiniLM model identifier. Observed inference was 5182.9 ms for the first catalogue request, 1261.1 ms for decorators and 1837.3 ms for Kubernetes. Network/provider time is additional; these are individual observations, not latency guarantees.
+- Production metadata returned 54 catalogue entries, live search configured and semantic model configured.
+- Browser refresh retained the selected custom topic, Hindi goal, source and length instead of resetting to Python. Current page is also restored from the URL.
+- Guest save/completion actions open sign-in. Guest notes, bookmarks and account collections remain locked. Workspace remains empty while signed out, and the API denies anonymous workspace access. No new guest study activity is persisted.
+- Lesson dialog and privacy-enhanced YouTube iframe load; no autoplay. Iframe creation does not prove uninterrupted media playback in every region.
+- Timer duration selection, start/pause, navigation, account gate, recovery navigation, theme persistence, source/language/length controls and empty-result handling were exercised across browser walkthroughs and DOM tests.
+- Cold visits show an invitation without spending YouTube quota. Filter changes are debounced. Shared database caching, request leases, negative caching and a daily retrieval budget protect provider quota.
+- Runtime log inspection after Phase 2 requests returned platform Node `url.parse()` deprecation warnings; no inference/application exception appeared in the returned window. This is a limited observation.
 
-## Reproduced / established baseline
+## Authentication and real cloud persistence
 
-- Opened `https://ytguide-five.vercel.app/` in the cloud browser. Observed the Python default, five catalogue courses, guest workspace labels and active save controls.
-- The live sign-in dialog renders. Successful account login was not tested with a real owner's account.
-- Source inspection confirmed guest activity writes and loading from local storage; all refreshes called an unconditional default Python search.
-- Source inspection confirmed the live YouTube request/cache ignored the entered goal. The goal only affected reranking a fixed subject pool.
-- Vercel environment metadata contains database/auth variables and no `YOUTUBE_API_KEY`. No secret values were retrieved.
+Identity uses Neon Auth, with signed session/JWT verification and ownership checks in the workspace API. User records live in Neon PostgreSQL. Account-scoped retry drafts do not replace cloud persistence; legacy guest data requires explicit import.
 
-## Implemented repair
+The exact production origin was added to Neon's previously empty trusted-domain allowlist. A secure owner-provided browser sign-in then returned **Invalid email or password**. A successful personal owner session is therefore still unverified; do not describe this as a successful owner login.
 
-| Problem | Change |
-| --- | --- |
-| Login rejects existing short passwords before request | Sign-in accepts existing nonempty passwords; new password forms require at least eight characters, with provider validation still authoritative |
-| Stale/unclear sign-in session result | Small same-origin HTTP adapter; uncached server session lookup; actionable provider/network errors; a missing session no longer falsely claims account creation |
-| Initial connection failure leaves Sign in unusable | Sign-in retries account initialization |
-| Anonymous saves/notes/bookmarks/completion/progress | Activity gates; no new guest activity storage; account controls unlock only after cloud workspace loads |
-| Same generic courses for specific goals | Goal included in YouTube query/cache and candidate filtering; catalogue requires all meaningful goal terms |
-| Unsupported arbitrary topics | Other topic option; honest empty/error response and direct YouTube search |
-| Refresh resets Python/page | Search state/current view restored from URL; filter changes start fresh requests |
-| Sign-out leaves visible account state | Cache cleanup and controls relock; session checked on focus for an existing account |
+Real tests on isolated branch `br-round-bread-b33r9v1p` passed signup, session cookies, JWT signature/issuer/audience/expiry, saves, notes/version conflicts, collections, bookmarks, playback positions, idempotent imports, two-user isolation, forged-token rejection and logout. The runner cleaned its fixture users/records; the disposable branch expires after one day. No production fixture accounts were created.
 
-Legacy guest originals are retained for explicit import; personal activity is not silently uploaded. Signed-in data uses the existing PostgreSQL API, with account-scoped device drafts/outbox for retry. Keeping such a cache does not replace database persistence.
+The scratch environment took 9–12 seconds to fetch public signing keys with Node, beyond the former seven-second timeout. QA used urllib over verified TLS for that exact public JWKS URL while retaining jose signature and claim checks. Production allows 15 seconds and reports unavailable verification separately from invalid credentials.
 
-## Current automated evidence
+## Automated and model evidence
 
-- **28 Python tests:** ranking, deduplication, query sensitivity, all preset subjects, strict filters, goal-specific search/cache keys, unsupported-goal empty results, explicit-live errors and HTTP boundaries.
-- **16 Node/DOM tests:** validation, API authorization, hostile origins, public-config redaction, provider route allowlist, guest activity blocking, no guest activity writes, URL restoration, automatic filter search, account-scoped state, bookmark timestamps, same-origin auth requests, provider errors/timeouts, successful sign-in/save/sign-out orchestration against mocked services, and initialization retry.
-- Syntax checks, production browser-bundle build and `git diff --check` pass.
-- The auth browser bundle no longer imports the large managed-auth SDK/UI dependency tree. Provider-managed identity remains unchanged.
+- **19 Node/DOM tests and 35 Python tests passed**, with syntax checks. GitHub CI also passed model preparation, evaluation, tests and build.
+- DOM account tests mock their service responses; the isolated cloud tests above separately exercise real services.
+- Active catalogue: **54 verified entries**. Original export: **176 rows, 140 unique raw IDs**. Removing 36 duplicate occurrences and one malformed unique ID yields **139 valid unique legacy candidates**, stored separately from the active catalogue.
+- Actual pretrained `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, quantized ONNX CPU inference, combines semantic similarity with TF-IDF and channel diversity. It was not trained by this project and does not assess teaching quality or watch video contents.
+- Checksum-pinned model/tokenizer assets are fetched at build time; visitors do not download model weights. Missing/erroring inference has a clearly labelled keyword fallback.
+- A small, manually authored 24-query development smoke set recorded top-one topic/intent matches of **22/24 hybrid vs 21/24 lexical**, MRR@5 **0.958 vs 0.889**. Two top-one misses remain in `data/ranking_evaluation.json`. This is not an independently judged quality study.
+- Shared candidate caching passed against the isolated database through independent connections, with one provider fetch.
 
-DOM account tests use mocked services. They validate frontend behaviour, not real provider/database availability.
-
-## Remaining work
-
-1. Successful login with a valid registered account, followed by cloud-backed note/save/bookmark/collection tests, reload, separate-session persistence, logout and account isolation. The secure owner login returned Invalid email or password. Passwords/codes must never be pasted into chat. No additional attempt was made after that credential rejection.
-2. GitHub/Vercel synchronization completed: main ref and production deployment both confirm repair commit b6770f2.
-3. Preview-only cloud fixture tests were not run for this repair. No production fixture account was created as a workaround.
-
-Neon production domain configuration is fixed. The attached `ytguide-db` resource reports Free (`free_v3`), no credit card required. Vercel’s API additionally confirms Hobby. No plan upgrade, AI subscription or wildcard-domain access was enabled.
-
-Provider domain setup reference: https://neon.com/docs/auth/guides/configure-domains .
-
-## Phase 1 verification — approved release
-
-- 19 Node/DOM and 29 Python checks pass, including Unicode goals, empty custom-topic handling, no cold-visit provider call, the corrected fallback URL and preserving/completing a Save action after login.
-- Real isolated Neon branch `br-round-bread-b33r9v1p`: signup, session cookies, JWT signature/issuer/audience/expiry, workspace CRUD, notes/version conflicts, collections, bookmarks, playback positions, idempotent imports, two-user isolation, logout and forged-token rejection passed.
-- The environment's Node fetch took 9–12 seconds for public signing keys, exceeding the former 7-second timeout. QA used urllib over verified TLS for that exact public JWKS URL while retaining jose signature/claim checks. Production now permits a 15-second key lookup and distinguishes unavailable verification from an invalid session.
-- Shared candidate caching passed against the isolated database across independent HTTP connections, invoking the candidate fetch only once.
-- Temporary fixture users/records are cleaned by the test runner; the disposable branch expires automatically after one day. No production test accounts were created.
-- A successful owner browser session remains a separate check; these real backend tests do not claim a successful owner password submission.
-
-## Phase 2 semantic release checks
-
-- Active catalogue: 54 verified entries. Original export: 176 rows, 140 unique IDs; cleaned output retains 139 valid IDs after 36 duplicate occurrences and one malformed unique ID are removed. Unverified legacy candidates stay separate.
-- Quantized multilingual MiniLM actually ran on CPU with the pinned ONNX/tokenizer assets. Hindi semantic SQL matching, Hindi technology-name handling, explicit subject constraints, missing-model fallback, inference-error fallback and invalid ranking parameters are covered.
-- 19 Node/DOM checks and 35 Python checks pass (including six semantic/fallback checks); model assets are required for the integration cases.
-- A 24-query development smoke benchmark recorded top-one topic/intent matches of 22/24 hybrid vs 21/24 lexical, and MRR@5 of 0.958 vs 0.889. It is small, manually authored and not an independent quality study. Two top-one misses are retained in the checked-in report.
-- Local model measurements record cold and warm inference separately. They are not webpage-load or global production-latency claims.
-- Model files are checksum-pinned and fetched at build time; no visitor model download, paid inference API, new AI account or plan upgrade is required. Deployed bundle size and actual production hybrid mode remain post-build release checks.
-- Account APIs and isolated cloud fixture results from Phase 1 remain applicable; Phase 2 does not migrate user data or change identity providers.
+Neon reports Free (`free_v3`) and Vercel reports Hobby. No new paid account or subscription was introduced. Free tiers retain their normal quotas and cold-start limits.
