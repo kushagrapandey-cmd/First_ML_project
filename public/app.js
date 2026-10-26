@@ -37,6 +37,19 @@ let bookmarks = read('ytguide.bookmarks.v3',{});
 let collections = read('ytguide.collections.v3',[]);
 let memberships = read('ytguide.memberships.v3',{});
 let noteVersions = {};
+function normalizeWorkspace(){
+  const object=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+  saved=Array.isArray(saved)?saved.filter(validVideo).slice(0,300):[];
+  completed=Array.isArray(completed)?completed.filter(id=>typeof id==='string'&&ID.test(id)).slice(0,1000):[];
+  notes=Object.fromEntries(Object.entries(object(notes)).filter(([id,v])=>ID.test(id)&&typeof v==='string').map(([id,v])=>[id,v.slice(0,8000)]));
+  lessonIndex=Object.fromEntries(Object.entries(object(lessonIndex)).filter(([,v])=>validVideo(v)));
+  for(const v of saved)lessonIndex[v.id]=v;
+  positions=Object.fromEntries(Object.entries(object(positions)).filter(([id,v])=>ID.test(id)&&Number.isSafeInteger(v)&&v>=0&&v<=604800));
+  collections=Array.isArray(collections)?collections.filter(c=>c&&typeof c.id==='string'&&/^[0-9a-f-]{36}$/i.test(c.id)&&typeof c.name==='string'&&c.name.trim()&&c.name.length<=60).slice(0,50):[];
+  bookmarks=Object.fromEntries(Object.entries(object(bookmarks)).filter(([id,list])=>ID.test(id)&&Array.isArray(list)).map(([id,list])=>[id,list.filter(b=>b&&typeof b.id==='string'&&/^[0-9a-f-]{36}$/i.test(b.id)&&Number.isSafeInteger(b.seconds)&&b.seconds>=0&&b.seconds<=604800&&typeof b.label==='string'&&b.label.length<=200).slice(0,100)]));
+  memberships=Object.fromEntries(Object.entries(object(memberships)).filter(([id,list])=>ID.test(id)&&Array.isArray(list)).map(([id,list])=>[id,list.filter(c=>collections.some(v=>v.id===c))]));
+}
+normalizeWorkspace();
 let noteConflicts = {};
 let playerInstance = null;
 let playerReady = false;
@@ -162,6 +175,7 @@ function openLesson(video) {
   $('#lesson-dialog').showModal();
 }
 $('#lesson-dialog').addEventListener('close', () => {
+  if(currentVideo){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});}
   savePosition(true);
   if(playerInstance){try{playerInstance.destroy();}catch{} playerInstance=null;}
   playerReady=false;
@@ -280,7 +294,7 @@ window.YTGuide = {
     storageScope=scope;
     saved=read('ytguide.saved.v2',[]);completed=read('ytguide.completed.v2',[]);notes=read('ytguide.notes.v2',{});
     lessonIndex=read('ytguide.lessons.v3',{});positions=read('ytguide.positions.v3',{});bookmarks=read('ytguide.bookmarks.v3',{});collections=read('ytguide.collections.v3',[]);memberships=read('ytguide.memberships.v3',{});
-    noteVersions={};noteConflicts={};
+    noteVersions={};noteConflicts={};normalizeWorkspace();
     updateWorkspace();renderResults();
   },
   applyCloud(data) {

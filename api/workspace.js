@@ -146,3 +146,6 @@ export default async function handler(req,res) {
     return respond(res,503,{error:'Cloud sync is unavailable. Your local draft is kept; retry before signing out.'});
   }
 }
+
+// Exported only for build-time integration tests. Vercel exposes the default HTTP handler.
+export {load,mutate,limits};
