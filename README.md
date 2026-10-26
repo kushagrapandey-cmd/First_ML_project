@@ -1,166 +1,173 @@
 # YTGuide
 
-**A focused YouTube learning workspace with explainable recommendations.**
+**A focused YouTube learning workspace: find a lesson, study it, and pick up where you left off.**
 
-Pick a subject, get up to five relevant lessons, and study with notes, a focus timer, and saved progress. The project began in a college Python/ML workshop and has been developed into a deployable web application.
+Live site: **https://ytguide-five.vercel.app/**
 
-## What works
+YTGuide began as a college Python/ML workshop project for students who get distracted while looking for lessons on YouTube. It now combines explainable Python recommendations with an optional account-backed study workspace. There is no chatbot in this release.
 
-- Seven subjects: Python, web development, Java, machine learning, SQL, Linux/Bash, and data structures.
-- Query-to-video TF-IDF cosine similarity, deduplication, and channel diversity.
-- A maintained catalogue of 39 candidates with public YouTube metadata checked on 26 October 2026. Candidate availability can subsequently change.
-- Optional live YouTube Data API retrieval, with explicit catalogue fallback on missing credentials, provider failure, or quota exhaustion.
-- Language filters and duration filters. Unknown language/duration never silently satisfies a strict filter. Fewer than five results is valid.
-- Responsive light/dark interface, keyboard navigation, reduced-motion support, and an accessible native lesson dialog.
-- User-initiated YouTube embeds, no app feed/comments, no autoplay, and a YouTube link if embedding fails.
-- Saved lessons, notes, manual completion tracking, Markdown note export, and a 15/25/50-minute timer.
-- Workspace data stays in local browser storage. There are no accounts, cloud sync, tracking scripts, or fabricated counters.
+## Current capabilities
 
-**Current deployment runs in catalogue mode until a new `YOUTUBE_API_KEY` is configured.** The application shows its actual source above the results. Live integration has mocked automated coverage; a successful real-key production request still needs to be verified after setup.
+- Seven subjects, an optional learning goal, language/duration filters, and up to five explained results.
+- Python TF-IDF cosine similarity, video-ID deduplication, and channel diversity.
+- A maintained catalogue of 39 YouTube candidates; public metadata checked on 26 October 2026. Availability can subsequently change.
+- Optional live YouTube retrieval. **A fresh `YOUTUBE_API_KEY` is still required**; missing credentials/provider failure produce a labelled catalogue fallback. Catalogue results are never described as a fresh search.
+- Guest mode without signup, plus email/password accounts through **Neon Managed Auth**.
+- **Neon PostgreSQL** persistence for account lessons, notes, progress, bookmarks, collections and import receipts.
+- Saved lessons, manually marked completion, recently opened lessons, and collection filters.
+- Resume position and clickable timestamped bookmarks through the YouTube IFrame Player API. Position is saved about every 15 seconds and on pause/close when the player reports it.
+- Local-first note drafts, a persistent pending-change queue, retry controls, and optimistic note conflict handling.
+- Explicit guest-to-account import in retry-safe batches. Cloud notes take priority over conflicting guest notes; guest originals remain on the device.
+- Markdown notes export, JSON workspace backup export, light/dark mode, keyboard navigation, reduced-motion support, and a focus timer.
 
-## Run locally
+See [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md), [INTERVIEW_GUIDE.md](INTERVIEW_GUIDE.md), and [QA_REPORT.md](QA_REPORT.md) for decisions, an interview walkthrough, and tested limitations.
 
-Requires Python 3.12+ and a modern browser. Production has no third-party Python dependencies or frontend build step.
+## Walkthrough
 
-```sh
-python scripts/dev.py
-# Open http://localhost:3000
-python -m unittest discover -s tests -v
-node --check public/app.js
-```
+1. Choose a topic in **Discover lessons**, optionally add a goal, and find a shortlist. Read the source notice and expand **Why this lesson?** for matched terms.
+2. Open a lesson and deliberately load the YouTube player. There is no autoplay. If the player cannot play in your region/browser, use **Open on YouTube**.
+3. Write notes and bookmark a moment. Leave the timestamp blank to use the current player position, or enter `mm:ss`, such as `12:35`.
+4. Save a lesson and manually mark it complete. Playback position is progress, not evidence that you understood the subject.
+5. In **My workspace**, create a collection and filter saved/recent/completed/noted lessons. Add a lesson to collections from its focus dialog. Removing a collection leaves lessons and notes intact.
+6. Use the timer alongside the player. It continues in the corner when the lesson closes and resets on page reload.
+7. Choose **Sign in / sync** to create an account or sign in. Verification and reset flows use the managed provider's email-code capability when enabled. Do not paste passwords or codes into an AI chat.
+8. Your account opens its own cloud workspace. **Import guest workspace** is an explicit choice, not an automatic upload of a shared browser's data.
+9. Check the sync status. **Saved locally / pending** is different from **Cloud synced**. Retry pending changes before signing out. A note conflict lets you choose the cloud note or explicitly replace it with your draft.
+10. Export notes or a full JSON workspace backup to keep a separate copy. JSON restore through file upload is not part of this release.
 
-Node is only needed for the optional syntax check, not to serve the app. Standalone Python does not automatically load `.env` files. Use your shell or IDE's environment configuration if testing live mode locally; do not commit a key.
+### Where does the data live?
 
-## User walkthrough
+| Information | Guest | Signed in |
+| --- | --- | --- |
+| Saved/completed lessons | Browser local storage | PostgreSQL, with scoped local cache/pending changes |
+| Notes, bookmarks, collections | Browser local storage | PostgreSQL, with local drafts |
+| Playback position | Browser local storage | PostgreSQL + local cache |
+| Appearance | Browser local storage | Browser local storage |
+| Running timer | Page memory; resets on reload | Page memory; resets on reload |
+| Password/session | Not applicable | Managed by Neon Auth; HTTP-only session cookies |
+| Short-lived API JWT | Not applicable | Memory only, never deliberately saved to local storage |
+| Actual video/audio | Not stored | Not stored |
 
-1. **Discover lessons:** choose a study topic and language. Add a specific goal such as “functions” or “neural networks.” Select a duration if useful, then click **Find my lessons**.
-2. Read the source notice. **Study catalogue** always uses local candidates. **Automatic** uses live retrieval when configured; **Live YouTube** explicitly reports fallback if unavailable.
-3. Expand **Why this lesson?** for matched terms. This explains text relevance; it is not an accuracy, popularity, or teaching-quality score.
-4. Click **Watch lesson**, then **Load YouTube player**. The second click intentionally connects to YouTube; playback does not auto-start. If playback is unavailable, use **Open on YouTube**.
-5. Write notes in the focus space. They save on this device after each change. **Mark complete** is self-reported progress, not video-watch telemetry.
-6. Use **+** to save a lesson. Open **My workspace** to revisit it. Removing a save does not delete its notes.
-7. Start a focus timer from the sidebar or lesson dialog. The lesson timer opens alongside your notes without stopping playback. Closing the lesson keeps the timer running in the corner. Pausing preserves the remaining time; changing session length resets it. Hiding the timer does not stop it. Reloading the page resets the timer.
-8. Export notes from **My workspace** to keep a Markdown backup. Clearing browser storage deletes local workspace data.
+Synced account caches are cleared on normal sign-out. If changes remain pending and the user explicitly signs out anyway, that account's scoped cache is retained for later recovery. Guest data remains separate. Browser storage is unencrypted; a person with access to your browser profile can inspect local data. Different domains have separate guest workspaces.
 
-On mobile, use the navigation below the logo and the appearance button in the top bar.
+## Why these technology choices?
 
-## Why change the workshop implementation?
+| Choice | Reason | Trade-off |
+| --- | --- | --- |
+| PostgreSQL on Neon Free | Users, lessons, collections and memberships are related; composite keys, foreign keys and transactions enforce consistency | Requires provisioning, migrations and quota management |
+| Neon Managed Auth | Managed password/session/email flows; shares the selected provider and avoids writing password hashing/session code | Vendor dependency; current SDK is pinned to a beta release, so upgrades need regression tests |
+| Node.js for account APIs | Official Neon serverless SQL driver and `jose` token verification | A second runtime alongside Python |
+| Python for ranking | Retains the project's original ML focus and keeps retrieval code inspectable | TF-IDF does not understand deep semantics or teaching quality |
+| Existing static frontend | Keeps the implemented UI and avoids a framework migration just to add accounts | State and sync orchestration are maintained explicitly |
+| Same-origin auth proxy | Browser sessions work on the application's origin rather than depending on third-party auth cookies | Proxy routes, cookies, origins and errors need careful testing |
+| Per-field mutations | A position update cannot accidentally replace notes/completion/collections | More API action types than one whole-workspace save |
+| Versioned note writes | Stops a stale device from silently overwriting another device's note | Conflicts require an explicit user decision |
+| JSONB lesson metadata | Stores a small display snapshot alongside per-user state | Some metadata duplication; not a global canonical video index |
 
-Building a dataset yourself was a reasonable experiment. Uploading it to Kaggle was not a model-quality guarantee. The actual weaknesses were:
-
-| Original behavior | Current behavior |
-| --- | --- |
-| Select the first row for a topic, then find its nearest neighbors | Rank the user's actual subject/goal query against candidates |
-| Fixed title-only bag-of-words similarity matrix | Fit smoothed TF-IDF over candidate text for each request |
-| Duplicate videos and mixed entertainment/placement results | Deduplicate by video ID; subject-scoped teaching catalogue |
-| Old cached results presented without freshness context | Explicit catalogue/live source and provider-failure notices |
-| Link out immediately to YouTube's full browsing UI | Deliberate lesson player, notes, progress, and timer |
-| Fake “Like” counter that reset each run | No fabricated engagement metrics |
-| API credentials and exception output in a notebook | Sanitized notebook, server-only environment variable |
-| Streamlit/Heroku-style deployment with incomplete dependencies | Static frontend + Vercel Python function |
-
-Original code and artifacts are preserved under [`legacy/`](legacy/). They are not loaded in production. Never unpickle an untrusted artifact. Historical API keys have been removed from the current notebooks, but **they remain in Git history and must be revoked in Google Cloud**. History was not rewritten.
+Knowing MERN does not make MongoDB the automatic answer. This release's relationships and consistency requirements are a strong fit for SQL. A document database could work, but would move more invariants into application code.
 
 ## Recommendation pipeline
 
-```mermaid
-flowchart TD
-  A[Topic and learning goal] --> B{Live provider configured?}
-  B -->|Yes| C[YouTube search and video details]
-  B -->|No| D[Study catalogue]
-  C -->|Provider failure| D
-  C --> E[Filter and deduplicate]
-  D --> E
-  E --> F[TF-IDF query cosine similarity]
-  F --> G[Channel diversity adjustment]
-  G --> H[Up to five explained results]
+`Topic + goal → live candidates or catalogue → filters/deduplication → query TF-IDF cosine → channel diversity → up to five results`
+
+The model compares the **actual query** with candidates. It does not use the first topic row as a substitute for the student.
+
+- `idf(t) = log((1 + N) / (1 + df(t))) + 1`
+- Sublinear term frequency: `tf(t) = 1 + log(count(t))`
+- Cosine similarity over normalized query/document vectors.
+- Greedy channel adjustment: `similarity / (1 + 0.25 × prior_selections_from_channel)`.
+
+A similarity score is text relevance, not a teaching-quality probability. No supervised quality model, deep-learning inference, or generative AI runs here. A collected dataset is a valid starting experiment; duplications, noise, staleness and absent evaluation were the original weaknesses. Publishing on Kaggle did not establish quality.
+
+## Local development
+
+Python 3.12 and Node.js 22+ are required. Production runs Python and Node functions on Vercel.
+
+```sh
+npm ci
+npm run build             # auth bundle; migration skipped locally without DATABASE_URL
+npm run dev               # static + recommendation API at localhost:3000
+npm run check
+npm run test:server
+python -m unittest discover -s tests -v
 ```
 
-The implementation is in [`api/recommend.py`](api/recommend.py).
+The small Python local server covers guest UI and ranking. Full account API testing uses a Vercel preview with its provisioned Neon branch; `python scripts/dev.py` does not emulate Node account functions. For full local platform emulation, link the correct Vercel project and use `vercel dev` with separately provisioned development variables. Do not copy production credentials into source code or request them in chat.
 
-- Tokenize lowercase alphanumeric terms and remove a small stopword list.
-- Use `idf(t) = log((1 + N)/(1 + df(t))) + 1` and sublinear `tf = 1 + log(count)`.
-- Normalize document and query vectors, then compute cosine similarity.
-- Discard zero-overlap candidates and malformed/duplicate IDs.
-- Greedily select by `cosine / (1 + 0.25 × number_of_already_selected_videos_from_channel)`.
-- Return matched terms. Similarity is never displayed as a “quality percentage.”
+## Deployment and migrations
 
-This is a statistical content-based retrieval model. It is not a deep-learning model, a generative chatbot, or a system trained on student outcomes. It cannot identify the objectively best five videos on all of YouTube. More computationally expensive AI is not automatically better for this small retrieval task.
+- Vercel project: `ytguide`, repository: `kushagrapandey-cmd/First_ML_project`.
+- Static output: `public/`; build: `npm run build`; runtime functions in `api/`.
+- Database and account functions use Singapore (`sin1`) to keep compute near storage.
+- Neon resource: `ytguide-db`, Free plan. Managed Auth enabled; realtime is not needed.
+- Preview database branching is enabled; production uses a stable database branch.
+- `scripts/migrate.mjs` applies additive migration 1 with an advisory transaction lock. Builds fail on migration errors instead of releasing an app with missing tables.
+- `scripts/verify-cloud.mjs` runs actual auth/database fixture checks only for preview deployments. It never logs fixture passwords, cookies, tokens or connection strings. Fixtures are synthetic, not user identities.
+- CI runs Python tests, Node boundary tests, syntax checks and the browser bundle build without cloud credentials.
 
-For live results, retrieval asks for embeddable, syndicated videos and excludes known nonpublic, unembeddable, live/upcoming, and under-three-minute candidates. Declared audio metadata is required for a strict language selection. Retrieval still does not guarantee that a video will play in every region/browser.
+Required integration-injected server configuration:
 
-The 15-minute in-memory cache has a finite keyspace of topic × language, including negative caching on provider failure. It is per function instance, **not a global rate limiter or a global quota guarantee**. User goal text reranks candidates without creating another provider search key.
+```text
+DATABASE_URL
+NEON_AUTH_BASE_URL
+```
 
-## Architecture and files
+Optional server configuration:
 
-| File | Responsibility |
+```text
+YOUTUBE_API_KEY
+```
+
+Do not expose the database URL or API key in browser code. `/api/workspace?action=config` returns only readiness booleans and the public same-origin auth path.
+
+### Enable live YouTube search
+
+Enable YouTube Data API v3 in your Google Cloud project, create a **new restricted key**, add `YOUTUBE_API_KEY` as a Vercel Secret, and redeploy. The two historical notebook keys must be revoked; removing them from the latest files did not remove Git-history exposure. Real-key live success still needs its own test after configuration.
+
+### Managed email and production readiness
+
+Managed Auth provides verification/reset emails. Shared-provider email codes are useful for demos; the provider recommends custom SMTP before a wider production launch. Email delivery and password recovery must be tested with a real mailbox under the owner's control. No paid plan, third-party SMTP account, or chatbot subscription was enabled by this release.
+
+## Repository map
+
+| Path | Responsibility |
 | --- | --- |
-| `public/index.html` | Accessible page structure and UI content |
-| `public/styles.css` | Responsive layout, theme tokens, reduced motion |
-| `public/app.js` | Search, dialog/player, local workspace, notes export, timer |
-| `api/recommend.py` | Validated API, YouTube adapter, cache, ranking |
-| `api/catalog.json` | Maintained candidate metadata and editorial tags |
-| `scripts/dev.py` | Local static/API server matching production paths |
-| `scripts/check_catalog.py` | Refresh titles/authors through YouTube oEmbed |
-| `scripts/enrich_catalog.py` | Refresh duration from public watch-page metadata |
-| `scripts/seed_catalog.py` | Initial candidate seed; not a production refresh job |
-| `tests/` | Retrieval, fallback, caching, HTTP regression checks |
-| `vercel.json` | Deployment layout and security headers |
-| `INTERVIEW_GUIDE.md` | Decisions, limitations, and interview walkthrough |
+| `public/app.js` | Lessons, local workspace, collections/bookmarks, player, timer |
+| `public/account.js` | Account UI, cloud outbox/retry, import and conflict workflow |
+| `src/auth-sdk.js` | Managed auth SDK adapter; bundled at build time |
+| `api/recommend.py` | Python ranker and optional YouTube adapter |
+| `api/auth.js` | Bounded same-origin auth proxy; admin routes excluded |
+| `api/workspace.js` | Authenticated workspace actions and ownership checks |
+| `lib/identity.js` | JWKS JWT signature, issuer, audience and expiry validation |
+| `lib/db.js` | Lazy SQL client and transaction-scoped user context |
+| `lib/validation.js` | Input/body limits, origin checks and responses |
+| `db/001_workspace.sql` | Schema, constraints and indexes |
+| `scripts/` | Build, migrations, fixture verification and catalogue maintenance |
+| `legacy/` | Sanitized original workshop app/notebooks/model artifacts; not served |
 
-The production path does not need a database, model download, paid LLM, Kaggle access, npm install, or framework runtime. This choice keeps the demo lightweight and makes the Python recommendation code easy to inspect. Local storage is a conscious tradeoff: no account friction, but no cross-device sync.
+## Boundaries and limitations
 
-## Deploy on Vercel
-
-Use the Git repository with **Framework Preset: Other**, **Output Directory: public**, repository root as Root Directory, and no custom build command. Vercel detects `api/recommend.py` as the Python function. Only `public/` is served as static files; legacy notebooks/model files are not public web assets.
-
-### Enable live retrieval
-
-1. In Google Cloud, enable **YouTube Data API v3** in your own project.
-2. Revoke the two historical exposed keys. Create a new key restricted to YouTube Data API v3. Never reuse the notebook keys.
-3. Add `YOUTUBE_API_KEY` as a Secret in Vercel → ytguide → Settings → Environment Variables, scoped to the environments you intend to use. Enter the value there, not in chat or source code.
-4. Redeploy. Search with **Live YouTube** and confirm the visible notice says live candidates. `/api/recommend?action=meta` exposes only whether a key is configured, never its value.
-5. Verify successful retrieval, strict language behavior, duration filters, and fallback on an invalid test key in a nonproduction environment.
-
-No paid services or plan upgrades are necessary for catalogue mode. Live mode consumes your YouTube project's quota. Before opening the live provider to substantial public traffic, add shared caching and distributed rate limiting, plus provider-side quota controls. Vercel's per-instance cache is insufficient for that job.
-
-## Data and evaluation
-
-Catalogue titles/authors are checked using YouTube's public oEmbed endpoint. Durations were read from public video metadata, and may be missing if retrieval fails. Language and tags are editorial annotations. oEmbed success proves metadata availability at check time, **not successful playback or educational quality**. `tests/catalog-check.json` records the latest metadata-check outcomes.
-
-The automated suite verifies application correctness. It does not establish recommendation superiority. To substantiate an ML research claim, the next work is:
-
-- Build a separately judged benchmark of learning goals and relevance labels, with explicit annotation criteria.
-- Compare a simple keyword baseline, the current ranker, and a sentence-embedding ranker on held-out queries using nDCG@5, MRR, and coverage.
-- Split by video/channel or time where appropriate to avoid evaluation leakage; do not tune on the test set.
-- Separately measure learning outcomes and distraction reduction in a consented user study. Clicks alone are not learning quality.
-
-## How this differs from a YouTube blocking extension
-
-Extensions can hide feeds across YouTube. YTGuide offers a bounded learning decision, an explanation, and a workspace for notes and progress without installing an extension. It does **not** replace a blocker, control other tabs, remove ads, or suppress all related videos inside YouTube's player. `rel=0` limits suggestions to the same channel; it does not remove them.
+- Catalogue mode is finite, not a fresh index of YouTube. Live mode consumes provider quota; its per-instance cache is not a distributed quota guarantee.
+- The workspace API limits requests per authenticated user in PostgreSQL. It is not a complete bot/fraud defence against mass account creation.
+- JWTs are short-lived. A token minted before logout can remain valid until expiry; normal browser logout clears the session and this app stops using its token.
+- Notes have optimistic version checks. Saved/completed flags and position use last accepted field update. Resume position can move backwards intentionally when revisiting a lesson.
+- Metadata availability does not guarantee regional playback. Video media buffering can prevent a full playback test in a cloud browser.
+- The app cannot remove YouTube ads/branding/end-screen suggestions, control other tabs, or replace a browser blocker.
+- There is no verified learning-outcome improvement or “best five on YouTube” guarantee. Build a separately judged held-out benchmark before claiming a better model.
+- Account deletion/retention workflows, collaboration, automatic study plans, native app packaging, and JSON file restore remain future work.
+- The SDK dependency tree contains optional UI packages we do not render. Versions are locked; the Zod override addresses the reported oversized-collection validation advisory. Re-run audit and integration checks on upgrades.
 
 ## Credits and contribution
 
-The original app credits **Kushagra Pandey, Aryan Gupta, Harsh Mishra, and Ayush Nishad**, guided by **Chandan Verma**. Preserve that team history when presenting the workshop work.
+The original app credits **Kushagra Pandey, Aryan Gupta, Harsh Mishra, and Ayush Nishad**, guided by **Chandan Verma**. Keep that team history when presenting the workshop work.
 
-Kushagra supplied the student-distraction problem, the original workshop context and project, and the modernization requirements. The modernization's code, tests, design, and documentation were implemented with AI assistance under that direction. Do not invent individual authorship percentages; explain and demonstrate the portions you personally understand, changed, and tested.
-
-## Limitations and next steps
-
-- Catalogue mode is finite and maintained, not a continuously refreshed YouTube index.
-- TF-IDF misses semantic synonyms and deep instructional quality. Channel diversity is a heuristic.
-- Language metadata may be missing or wrong; strict filtering trades coverage for honesty.
-- YouTube can remove videos, change embedding rights, show ads, or restrict regions after metadata checks.
-- Notes/progress are local, unencrypted browser data. Shared devices are shared workspaces.
-- Focus timer is a study aid and resets on reload; it is not watch-time measurement.
-- No guarantee of zero bugs, academic acceptance, job placement, or production-scale robustness.
-
-Prioritize benchmark labels and real student feedback before adding accounts, embeddings, or an LLM. If cloud sync becomes necessary, add authenticated access and a database with per-user authorization, then test those boundaries separately.
+Kushagra supplied the original student problem/workshop context, the existing prototype/data-collection work, and the requirements and scope decisions for this modernization. The newer implementation, tests, design and documentation were developed with AI assistance. Do not assign invented individual authorship percentages. Explain what you actually understand, reviewed, changed and tested.
 
 ## Primary references
 
-- [YouTube search endpoint](https://developers.google.com/youtube/v3/docs/search/list)
-- [YouTube video details](https://developers.google.com/youtube/v3/docs/videos/list)
-- [YouTube player parameters and `rel`](https://developers.google.com/youtube/player_parameters)
-- [YouTube API quotas](https://developers.google.com/youtube/v3/getting-started)
-- [Vercel Python functions](https://vercel.com/docs/functions/runtimes/python)
+- [YouTube search API](https://developers.google.com/youtube/v3/docs/search/list)
+- [YouTube IFrame API](https://developers.google.com/youtube/iframe_api_reference)
+- [Neon Auth](https://neon.com/docs/auth/overview)
+- [Neon Auth JWT contract](https://neon.com/docs/auth/guides/plugins/jwt)
+- [Neon serverless driver](https://neon.com/docs/serverless/serverless-driver)
+- [Vercel functions](https://vercel.com/docs/functions)

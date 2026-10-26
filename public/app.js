@@ -56,6 +56,7 @@ let playerReady = false;
 let playerApiPromise;
 let lastPositionSaved = 0;
 let noteDebounce;
+let noteDirty=false;
 function emitMutation(action,payload) { window.dispatchEvent(new CustomEvent('ytguide:mutation',{detail:{action,...payload}})); }
 function remember(video) {if(validVideo(video)){lessonIndex[video.id]=video;write('ytguide.lessons.v3',lessonIndex);}}
 const stamp = seconds => `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
@@ -157,6 +158,7 @@ async function findLessons(event) {
 function openLesson(video) {
   if (!validVideo(video)) return;
   currentVideo = video;
+  noteDirty=false;
   remember(video);
   emitMutation('lesson',{video,patch:{}});
   $('#lesson-title').textContent = video.title;
@@ -175,7 +177,7 @@ function openLesson(video) {
   $('#lesson-dialog').showModal();
 }
 $('#lesson-dialog').addEventListener('close', () => {
-  if(currentVideo){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});}
+  if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}
   savePosition(true);
   if(playerInstance){try{playerInstance.destroy();}catch{} playerInstance=null;}
   playerReady=false;
@@ -189,12 +191,13 @@ $('#lesson-notes').addEventListener('input', () => {
   if (!Object.hasOwn(notes,currentVideo.id) && Object.keys(notes).length >= 300) {
     $('#note-status').textContent = 'Notes limit reached. Export your existing notes first.'; return;
   }
+  noteDirty=true;
   notes[currentVideo.id] = $('#lesson-notes').value;
   const stored = write('ytguide.notes.v2', notes);
   $('#note-status').textContent = stored ? (storageScope==='guest'?'Saved on this device ✓':'Saved locally · cloud sync pending') : 'Not saved. Copy or export your notes before leaving.';
   const video={...currentVideo}; const content=notes[video.id];
   clearTimeout(noteDebounce);
-  noteDebounce=setTimeout(()=>emitMutation('note',{video,content}),700);
+  noteDebounce=setTimeout(()=>{emitMutation('note',{video,content});if(currentVideo?.id===video.id&&notes[video.id]===content)noteDirty=false;},700);
   updateWorkspace();
 });
 $('#save-lesson').addEventListener('click', () => toggleSave(currentVideo));
@@ -314,7 +317,7 @@ window.YTGuide = {
     noteVersions[id]=version;
     if(currentVideo?.id===id&&notes[id]===content)$('#note-status').textContent='Cloud synced ✓';
   },
-  flushNote(){if(currentVideo){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});}},
+  flushNote(){if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}},
 };
 updateWorkspace();
 findLessons();
@@ -408,6 +411,7 @@ async function loadPlayer(at){
 }
 function savePosition(force=false){
   if(!currentVideo||!playerReady||!playerInstance?.getCurrentTime)return;
+  if(![0,1,2].includes(playerInstance.getPlayerState()))return;
   const position=Math.max(0,Math.floor(playerInstance.getCurrentTime()));
   if(!Number.isFinite(position)||position>604800)return;
   if(!force&&Math.abs(position-lastPositionSaved)<15)return;

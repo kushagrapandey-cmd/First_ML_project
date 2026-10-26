@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import workspace from '../api/workspace.js';
+import authProxy from '../api/auth.js';
 import {getSQL} from '../lib/db.js';
 if(process.env.VERCEL_ENV!=='preview') {
   console.log('Cloud fixture tests run only against preview branches.');
@@ -14,12 +15,19 @@ if(process.env.VERCEL_ENV!=='preview') {
     const value=await response.json().catch(()=>({}));
     return {response,value,cookie:response.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ')};
   }
+  async function proxy(path,body,cookie='') {
+    let status=200,raw='';const headers={};
+    await authProxy({method:body?'POST':'GET',url:'/api/auth/'+path,headers:{host,origin,...(body?{'content-type':'application/json'}:{}),...(cookie?{cookie}:{})},body},{set statusCode(v){status=v;},setHeader(k,v){headers[k.toLowerCase()]=v;},end(value){raw=value;}});
+    const cookieHeaders=headers['set-cookie']||[];
+    assert.ok(cookieHeaders.every(c=>!/[; ]Domain=/i.test(c)),'Provider-domain cookies must be scoped to the application');
+    return {response:{ok:status>=200&&status<300,status},value:JSON.parse(raw||'null'),cookie:cookieHeaders.map(c=>c.split(';')[0]).join('; ')};
+  }
   async function account(){
     const password=randomBytes(32).toString('base64url');
-    const signup=await provider('sign-up/email',{name:'YTGuide QA fixture',email:'qa-'+randomUUID()+'@example.invalid',password});
+    const signup=await proxy('sign-up/email',{name:'YTGuide QA fixture',email:'qa-'+randomUUID()+'@example.invalid',password});
     if(!signup.response.ok||!signup.value.user)throw new Error('Preview signup fixture failed: HTTP '+signup.response.status+' '+(signup.value.code||''));
     const fixture={id:signup.value.user.id,password,cookie:signup.cookie};fixtures.push(fixture);
-    const token=await provider('token',null,fixture.cookie);
+    const token=await proxy('token',null,fixture.cookie);
     if(!token.value.token)throw new Error('Preview signup did not produce an authenticated session: '+(token.value.code||token.response.status));
     fixture.token=token.value.token;return fixture;
   }
@@ -53,9 +61,9 @@ if(process.env.VERCEL_ENV!=='preview') {
     await call(a,importPayload);const retry=await call(a,importPayload);assert.equal(retry.alreadyImported,true);
     const after=await call(a);assert.equal(after.workspace.notes[0].content,'Device two note');assert.equal(after.workspace.lessons[0].position_seconds,800);assert.equal(after.workspace.bookmarks.length,1);
     const invalid={...a,token:a.token.slice(0,-8)+'invalidx'};await call(invalid,null,401);
-    const logout=await provider('sign-out',{},a.cookie);assert.ok(logout.response.ok);
-    const session=await provider('get-session',null,'');assert.ok(!session.value?.user);
-    console.log('CLOUD_QA_PASS: managed signup/session/JWT, workspace CRUD, two-user isolation, note conflicts, timestamp progress, idempotent import, logout, forged-token rejection.');
+    const logout=await proxy('sign-out',{},a.cookie);assert.ok(logout.response.ok);
+    const session=await proxy('get-session',null,a.cookie);assert.ok(!session.value?.user);
+    console.log('CLOUD_QA_PASS: same-origin auth proxy cookies, managed signup/session/JWT, workspace CRUD, two-user isolation, note conflicts, timestamp progress, idempotent import, logout, forged-token rejection.');
   } finally {
     for(const fixture of fixtures){
       // Fixtures live only in the isolated preview branch. Never touch pre-existing users.

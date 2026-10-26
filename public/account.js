@@ -14,6 +14,7 @@
     $('#account-button').textContent=cloud&&!sessionExpired?`${user.name || 'Account'} · sync`:'Sign in / sync';
     $('#sync-status').textContent=!cloud?'Guest mode · stored on this device':sessionExpired?'Session expired · sign in to resume sync':lastError||queue.length?`${queue.length} pending change${queue.length===1?'':'s'}${lastError?' · '+lastError:''}`:'Cloud synced ✓';
     $('#sync-retry').hidden=!cloud||(!queue.length&&!lastError);
+    $('#sync-discard').hidden=!cloud||!queue[0]?.rejected;
     $('#cloud-refresh').hidden=!cloud;
     $('#workspace-help').textContent=cloud?'Your account data syncs across devices. Pending changes remain cached locally until confirmed.':'Guest data stays in this browser. Sign in for cross-device sync. Export a backup to keep your own copy.';
     $('#guest-import').hidden=!cloud||!hasGuestData();
@@ -64,6 +65,7 @@
     if(user?.id!==identity)return;
     if(!queue.length)api.applyCloud(result.workspace);
     else for(const n of result.workspace.notes)if(!queue.some(q=>q.action==='note'&&q.video.id===n.video_id))api.setNoteVersion(n.video_id,n.version);
+    for(const item of queue.filter(q=>q.blocked)){const latest=result.workspace.notes.find(n=>n.video_id===item.video.id);if(latest)api.conflict(item.video.id,latest);}
     status();processQueue();
   }
   function enqueue(body){
@@ -81,6 +83,7 @@
     try{
       while(queue.length&&user?.id===identity&&generation===ownGeneration){
         const item=queue[0];
+        if(item.rejected){lastError='Server rejected a change · discard it or export a backup';break;}
         if(item.blocked){lastError='Resolve the note conflict in its lesson';break;}
         try{
           const result=await cloud(item);
@@ -93,12 +96,12 @@
         }catch(error){
           if(error.status===409&&item.action==='note'&&error.result?.note){
             const latest=error.result.note;
-            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version);queue.shift();saveQueue();continue;}
+            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version);for(const following of queue.slice(1))if(following.action==='note'&&following.video.id===item.video.id&&following.version===item.version)following.version=latest.version;queue.shift();saveQueue();continue;}
             item.blocked=true;saveQueue();api.conflict(item.video.id,latest);lastError='Note conflict · open the affected lesson';
           }else if(error.status===409&&['createCollection','bookmark'].includes(item.action)){
             const result=await cloud();const exists=item.action==='createCollection'?result.workspace.collections.some(c=>c.id===item.id):result.workspace.bookmarks.some(b=>b.id===item.id);
-            if(exists){queue.shift();saveQueue();continue;}lastError=error.message;
-          }else{lastError=error.message;if(error.status===401)sessionExpired=true;}
+            if(exists){queue.shift();saveQueue();continue;}item.rejected=true;saveQueue();lastError=error.message;
+          }else{lastError=error.message;if([400,404,413,415].includes(error.status)){item.rejected=true;saveQueue();}if(error.status===401)sessionExpired=true;}
           break;
         }
       }
@@ -158,6 +161,10 @@
     }catch(error){api.toast(error.message);}
   });
   $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else{lastError='';processQueue();}});
+  $('#sync-discard').addEventListener('click',async()=>{
+    if(!queue[0]?.rejected||!confirm('Discard the server-rejected change? Export a workspace backup first if you want to keep a separate copy.'))return;
+    queue.shift();saveQueue();lastError='';await processQueue();await refresh();status();
+  });
   $('#cloud-refresh').addEventListener('click',()=>{if(queue.length)api.toast('Sync pending changes before refreshing.');else if($('#lesson-dialog').open)api.toast('Close the lesson before refreshing.');else refresh();});
   window.addEventListener('online',processQueue);
   window.addEventListener('focus',()=>{if(queue.length)processQueue();else refresh();});
