@@ -71,3 +71,13 @@ Provider domain setup reference: https://neon.com/docs/auth/guides/configure-dom
 - Shared candidate caching passed against the isolated database across independent HTTP connections, invoking the candidate fetch only once.
 - Temporary fixture users/records are cleaned by the test runner; the disposable branch expires automatically after one day. No production test accounts were created.
 - A successful owner browser session remains a separate check; these real backend tests do not claim a successful owner password submission.
+
+## Phase 2 semantic release checks
+
+- Active catalogue: 54 verified entries. Original export: 176 rows, 140 unique IDs; cleaned output retains 139 valid IDs after 36 duplicate occurrences and one malformed unique ID are removed. Unverified legacy candidates stay separate.
+- Quantized multilingual MiniLM actually ran on CPU with the pinned ONNX/tokenizer assets. Hindi semantic SQL matching, Hindi technology-name handling, explicit subject constraints, missing-model fallback, inference-error fallback and invalid ranking parameters are covered.
+- 19 Node/DOM checks and 35 Python checks pass (including six semantic/fallback checks); model assets are required for the integration cases.
+- A 24-query development smoke benchmark recorded top-one topic/intent matches of 22/24 hybrid vs 21/24 lexical, and MRR@5 of 0.958 vs 0.889. It is small, manually authored and not an independent quality study. Two top-one misses are retained in the checked-in report.
+- Local model measurements record cold and warm inference separately. They are not webpage-load or global production-latency claims.
+- Model files are checksum-pinned and fetched at build time; no visitor model download, paid inference API, new AI account or plan upgrade is required. Deployed bundle size and actual production hybrid mode remain post-build release checks.
+- Account APIs and isolated cloud fixture results from Phase 1 remain applicable; Phase 2 does not migrate user data or change identity providers.

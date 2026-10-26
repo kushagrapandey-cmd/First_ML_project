@@ -1,3 +1,5 @@
+> Current v3.3 release: recommendations use a pinned quantized multilingual MiniLM sentence model on CPU, combined with TF-IDF and channel diversity. PostgreSQL shares candidate caching/budget reservations. The active catalogue has 54 verified entries; 139 cleaned legacy candidates remain separately labelled unverified. Read README.md and models/semantic/MODEL_CARD.md for the current inference/evaluation contract. Earlier lexical-only descriptions below document the baseline.
+
 > Updated behaviour (27 October 2026): sign-in is required for all new study activity. Legacy guest imports remain available. Search/navigation are restored from the URL. Live queries/cache keys include the actual goal; explicit Live mode fails clearly when unconfigured. The browser auth SDK has been replaced with a small same-origin HTTP adapter. See README.md for the current contract.
 
 # YTGuide system design

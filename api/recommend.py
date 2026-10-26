@@ -7,6 +7,8 @@ import time
 import threading
 import logging
 import unicodedata
+from lib import semantic
+from lib.query import normalize as normalize_query,anchored
 from collections import Counter
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler
@@ -132,8 +134,10 @@ def recommend(params):
     goal = params.get('goal', '').strip()
     source = params.get('source', 'auto')
     length = params.get('length', 'any')
-    if topic not in TOPICS or language not in ('any', 'en', 'hi') or source not in ('auto','catalogue','live') or length not in ('any','short','long') or len(goal) > 120:
+    ranking=params.get('ranking','hybrid')
+    if topic not in TOPICS or language not in ('any', 'en', 'hi') or source not in ('auto','catalogue','live') or length not in ('any','short','long') or len(goal) > 120 or ranking not in ('hybrid','lexical'):
         raise ValueError('Choose valid filters and a goal of at most 120 characters.')
+    goal=normalize_query(goal)
     if topic == 'custom' and not tokens(goal):
         raise ValueError('Enter what you want to learn in the goal field.')
     key = os.environ.get('YOUTUBE_API_KEY', '')
@@ -156,7 +160,10 @@ def recommend(params):
         rows = [r for r in CATALOG if (topic == 'custom' or r['topic'] == topic) and (language == 'any' or r['language'] == language)]
     if length != 'any':
         rows = [r for r in rows if r.get('duration') is not None and ((r['duration'] <= 1800) if length == 'short' else (r['duration'] > 1800))]
-    if goal:
+    query=goal if goal else TOPICS[topic]['query']
+    rows=anchored(rows,query)
+    use_semantic=ranking=='hybrid' and semantic.available()
+    if goal and not use_semantic:
         goal_terms = set(tokens(goal))
         if goal_terms:
             # A generic subject match cannot stand in for a specific learning goal.
@@ -164,9 +171,19 @@ def recommend(params):
         if mode == 'catalogue':
             notice += ' Results are limited to catalogue entries matching your goal; this is not a search of all YouTube.'
     query = goal if goal else TOPICS[topic]['query']
-    ranked = rank(rows, query)
+    started=time.monotonic();mode_ranking='lexical'
+    if use_semantic:
+        try:
+            ranked=semantic.rank(rows,query,rank);mode_ranking='hybrid'
+        except Exception as error:
+            logging.warning('semantic_inference_unavailable: %s',type(error).__name__)
+            terms=set(tokens(goal))
+            fallback_rows=[r for r in rows if not terms or terms<=set(tokens(' '.join([r['title'],r.get('tags',''),r.get('description','')])))]
+            ranked=rank(fallback_rows,query);mode_ranking='lexical-fallback'
+    else:ranked=rank(rows,query)
+    notice+=(' Meaning-aware neural + keyword ranking.' if mode_ranking=='hybrid' else ' Keyword ranking; semantic inference is unavailable.' if ranking=='hybrid' else ' Keyword ranking selected.')
     return dict(videos=ranked, topic=topic, source=mode, notice=notice, candidates=len(rows),
-                algorithm='TF-IDF cosine similarity + channel diversity', liveConfigured=bool(key))
+                algorithm='Multilingual MiniLM embeddings + TF-IDF + channel diversity' if mode_ranking=='hybrid' else 'TF-IDF cosine similarity + channel diversity', ranking=mode_ranking, semanticModel=semantic.MODEL_ID if mode_ranking=='hybrid' else None, inferenceMs=round((time.monotonic()-started)*1000,1),liveConfigured=bool(key))
 
 
 def cached_live_candidates(topic,language,key,goal=''):
@@ -187,7 +204,7 @@ class handler(BaseHTTPRequestHandler):
             return self.respond(400, {'error': 'Request is too long.'})
         params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         if params.get('action') == 'meta':
-            return self.respond(200, dict(topics=TOPICS, catalogueCount=len(CATALOG), liveConfigured=bool(os.environ.get('YOUTUBE_API_KEY'))))
+            return self.respond(200, dict(topics=TOPICS, catalogueCount=len(CATALOG), liveConfigured=bool(os.environ.get('YOUTUBE_API_KEY')),semanticConfigured=semantic.available(),semanticModel=semantic.MODEL_ID if semantic.available() else None))
         try:
             result = recommend(params)
             self.respond(200, result)

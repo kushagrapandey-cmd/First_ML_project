@@ -1,6 +1,6 @@
 # YTGuide
 
-A focused YouTube learning workspace: find a lesson, study it, and pick up where you left off.
+A focused YouTube learning workspace with multilingual semantic recommendations: find a lesson, study it, and pick up where you left off.
 
 Live site: https://ytguide-five.vercel.app/
 
@@ -14,7 +14,7 @@ The original college Python/ML workshop explored how students could find educati
 - Legacy guest data from earlier releases remains untouched and can be explicitly imported after sign-in. It is not loaded as the active anonymous workspace.
 - Seven preset subjects plus **Other topic**. Add the actual question or goal, language and duration filters.
 - Search filters, entered goal and current page are encoded in the URL, so refresh restores them. Changing a filter starts a new search.
-- Specific goals filter candidate text before ranking; a generic Python course cannot qualify solely because the selected subject is Python.
+- Explicit technology names constrain candidates; multilingual neural embeddings compare the meaning of your goal with lesson metadata, alongside keyword relevance.
 - Notes, saved/completed lessons, collections, timestamp bookmarks and resume positions belong to the authenticated user. The API checks authentication and ownership independently of the UI.
 - Notes use optimistic version checks; conflicts require an explicit choice. Imports use receipts to avoid duplicate retry batches.
 - Light/dark themes, keyboard navigation, reduced motion, notes export, JSON backup and focus timer are included. The timer resets on reload; search context does not.
@@ -45,21 +45,21 @@ Two historical notebook keys were exposed in Git history; those keys must be rev
 | Workspace API | Node + `jose` | Verifies JWT signature, issuer, audience and expiry before accessing user-owned records |
 | Database | Neon PostgreSQL Free, Singapore | Relational users/lessons/collections, foreign keys and transactions fit SQL well |
 | Retrieval | YouTube Data API v3 or maintained catalogue | API supplies real current candidates; catalogue is small and explicitly limited |
-| Ranking | Python TF-IDF cosine similarity + channel diversity | Explainable text relevance; it does not measure teaching quality or deep semantic understanding |
+| Ranking | Quantized multilingual MiniLM + TF-IDF + channel diversity | Pretrained semantic relevance on CPU; extra cold-start/memory cost, no teaching-quality guarantee |
 | Host | Vercel | Static assets plus Python and Node functions; account compute is configured near storage |
 
 ### Recommendation flow
 
-`Subject + actual goal → YouTube query/cache or catalogue → goal/language/duration filters → deduplicate → TF-IDF cosine ranking → channel diversity → up to five lessons`
+`Subject + goal → technology-name normalization → live YouTube/shared cache or catalogue → language/duration/subject filters → pretrained embeddings + TF-IDF → channel diversity → up to five lessons`
 
-The normalized goal is part of the live retrieval query **and cache key**. The per-instance cache holds at most 128 entries, with a 15-minute TTL and negative caching. It is not a distributed rate limiter. Provider quotas still apply.
+The normalized goal is part of the live retrieval query **and cache key**. PostgreSQL shares 15-minute candidate caching and a conservative daily retrieval budget across function instances. The small per-instance cache is an extra optimization. Provider quotas still apply independently.
 
 - Smoothed IDF: `log((1 + N) / (1 + document_frequency)) + 1`.
 - Sublinear TF: `1 + log(term_count)`.
 - Cosine similarity over normalized query/document vectors.
 - Channel penalty: `similarity / (1 + 0.25 × previously_selected_from_channel)`.
 
-A real generative AI model is not necessary to fix broken identity, persistence or video retrieval. Semantic ranking can be evaluated later against a separately judged dataset. Do not describe the current system as a neural teaching-quality model or promise “the best five videos.”
+The current semantic ranker runs an actual pretrained neural sentence model, not a generative LLM. It does not watch videos, learn from private notes, judge teaching quality or promise “the best five videos.” No paid inference API is used. `ranking=lexical` selects the classical comparison; any inference fallback is labelled in the response and source notice.
 
 ### Where data lives
 
@@ -81,9 +81,12 @@ Node.js 24 and Python 3.12:
 
 ```sh
 npm ci --ignore-scripts
+python -m pip install -r requirements.txt
+node scripts/prepare-model.mjs
 npm run check
 npm run test:server
 python -m unittest discover -s tests -v
+python scripts/evaluate-ranking.py
 npm run build
 npm run dev
 ```
@@ -152,3 +155,14 @@ MediConnect uses its own Express password/session implementation with Neon as it
 - Signing-key fetch timeouts return a retryable service error instead of claiming the user password/session is wrong.
 
 The semantic model remains a separate Phase 2 release; no neural inference is claimed by Phase 1.
+
+## Phase 2: semantic model, dataset and evaluation
+
+- Model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, quantized ONNX conversion pinned at `2c4055b12046f11709e9df2c122e59ffbdc2f900`. The build verifies SHA-256 hashes before packaging the 118,308,126-byte weights and 17,082,913-byte tokenizer. Visitors do not download these assets. See `models/semantic/MODEL_CARD.md` and its Apache-2.0 license.
+- CPU inference uses ONNX Runtime, 128-token inputs, attention-mask mean pooling and 384-dimensional normalized vectors. Ranking combines 80% semantic similarity, 20% TF-IDF and educator diversity. Explicit named technologies constrain results. Selected Hindi technology spellings are normalized; this is not a general translator.
+- `api/catalog.json` now contains 54 active metadata-checked lessons, including focused decorators, SQL joins and Kubernetes networking examples.
+- `data/legacy_clean.json` preserves 139 valid unique legacy candidates from 176 original rows: 36 duplicate occurrences and one malformed unique ID were removed. Those unverified legacy candidates are not silently used as current lessons. The original notebooks and pickle artifacts remain intact.
+- `data/dataset_manifest.json` records provenance/counts. `scripts/prepare-dataset.py` reproduces cleaning; `--refresh-focused` explicitly refreshes selected examples through the live API.
+- We use pretrained weights for inference. We did **not** train the neural model on the workshop dataset.
+- `data/ranking_evaluation.json` records a 24-query manually authored relevance smoke test. Hybrid ranked the expected topic first for 22/24 queries versus 21/24 for keyword ranking; MRR@5 was 0.958 versus 0.889. This is a small development check, not an independent teaching-quality or learning-outcome study. Two top-one cases remain misses. Local cold/warm inference times are recorded separately and are not end-to-end website latency claims.
+- Model downloads and inference require no additional account/API key. Runtime compute and provider quotas still count toward existing free-tier limits; no plan was upgraded.

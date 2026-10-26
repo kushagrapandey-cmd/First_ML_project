@@ -1,0 +1,546 @@
+{
+  "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "cases": 24,
+  "candidateVideos": 54,
+  "method": "Manually authored topic/intent relevance smoke set. Same candidate catalogue and technology-name normalization for both rankers. Not independently judged teaching quality or a broad held-out study.",
+  "lexicalTop1": 21,
+  "hybridTop1": 22,
+  "lexicalMRR5": 0.889,
+  "hybridMRR5": 0.958,
+  "coldInferenceMs": 4309.11,
+  "warmMedianMs": 6.61,
+  "environment": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "casesDetailed": [
+    {
+      "query": "decorate a function without rewriting it",
+      "expected": "decorators",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 4309.11,
+      "lexicalIds": [
+        "FXUUSfJO_J4",
+        "nYDKH9fvlBY",
+        "nivyaiCeWjs",
+        "nVdF7QT-Ggg",
+        "vAFl6tvrxOo"
+      ],
+      "hybridIds": [
+        "FXUUSfJO_J4",
+        "nYDKH9fvlBY",
+        "vAFl6tvrxOo",
+        "3tyaO-OE0K0",
+        "HcOc7P5BMi4"
+      ]
+    },
+    {
+      "query": "wrap functions to add extra behavior",
+      "expected": "decorators",
+      "lexicalTop1": false,
+      "hybridTop1": false,
+      "lexicalRR": 0.3333333333333333,
+      "hybridRR": 0.5,
+      "hybridMs": 7.88,
+      "lexicalIds": [
+        "_uQrJ0TkZlc",
+        "XKHEtdqhLK8",
+        "vAFl6tvrxOo",
+        "kqtD5dpn9C8",
+        "FXUUSfJO_J4"
+      ],
+      "hybridIds": [
+        "XKHEtdqhLK8",
+        "FXUUSfJO_J4",
+        "3tyaO-OE0K0",
+        "vAFl6tvrxOo"
+      ]
+    },
+    {
+      "query": "python decorators",
+      "expected": "decorators",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.22,
+      "lexicalIds": [
+        "3tyaO-OE0K0",
+        "vAFl6tvrxOo",
+        "nVdF7QT-Ggg",
+        "FXUUSfJO_J4",
+        "nYDKH9fvlBY"
+      ],
+      "hybridIds": [
+        "3tyaO-OE0K0",
+        "FXUUSfJO_J4",
+        "vAFl6tvrxOo",
+        "nVdF7QT-Ggg",
+        "nYDKH9fvlBY"
+      ]
+    },
+    {
+      "query": "combine rows from two tables",
+      "expected": "sql",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 7.85,
+      "lexicalIds": [
+        "HXV3zeQKqGY",
+        "Rek0NWPCNOc",
+        "efpFCd8iFAQ",
+        "vAFl6tvrxOo",
+        "f0Hv0QrBAHw"
+      ],
+      "hybridIds": [
+        "HXV3zeQKqGY",
+        "9yeOJ0ZMUYw",
+        "efpFCd8iFAQ",
+        "nivyaiCeWjs",
+        "hlGoQC332VM"
+      ]
+    },
+    {
+      "query": "matching records across database tables",
+      "expected": "sql",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.92,
+      "lexicalIds": [
+        "HXV3zeQKqGY",
+        "hlGoQC332VM",
+        "7S_tz1z_5bA",
+        "p3qvj9hO_Bo",
+        "qw--VYLpxG4"
+      ],
+      "hybridIds": [
+        "HXV3zeQKqGY",
+        "nivyaiCeWjs",
+        "efpFCd8iFAQ",
+        "hlGoQC332VM",
+        "9yeOJ0ZMUYw"
+      ]
+    },
+    {
+      "query": "दो तालिकाओं को जोड़ना",
+      "expected": "sql",
+      "lexicalTop1": false,
+      "hybridTop1": true,
+      "lexicalRR": 0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.7,
+      "lexicalIds": [],
+      "hybridIds": [
+        "efpFCd8iFAQ",
+        "9yeOJ0ZMUYw",
+        "HXV3zeQKqGY",
+        "nivyaiCeWjs",
+        "hlGoQC332VM"
+      ]
+    },
+    {
+      "query": "डेटाबेस से जानकारी निकालना",
+      "expected": "sql",
+      "lexicalTop1": false,
+      "hybridTop1": false,
+      "lexicalRR": 0,
+      "hybridRR": 0.5,
+      "hybridMs": 6.11,
+      "lexicalIds": [],
+      "hybridIds": [
+        "8DvywoWv6fI",
+        "efpFCd8iFAQ",
+        "p3qvj9hO_Bo",
+        "HXV3zeQKqGY",
+        "f0Hv0QrBAHw"
+      ]
+    },
+    {
+      "query": "sql joins",
+      "expected": "sql",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 2.74,
+      "lexicalIds": [
+        "7S_tz1z_5bA",
+        "HXV3zeQKqGY",
+        "efpFCd8iFAQ",
+        "hlGoQC332VM",
+        "p3qvj9hO_Bo"
+      ],
+      "hybridIds": [
+        "efpFCd8iFAQ",
+        "HXV3zeQKqGY",
+        "nivyaiCeWjs",
+        "7S_tz1z_5bA",
+        "f0Hv0QrBAHw"
+      ]
+    },
+    {
+      "query": "how pods communicate in a cluster",
+      "expected": "kubernetes",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 7.48,
+      "lexicalIds": [
+        "5cNrTU6o3Fw",
+        "6TZsd4toIbg",
+        "B6FsWNUnRo0",
+        "qnAnBTQ3zb4",
+        "tq9ng_Nz9j8"
+      ],
+      "hybridIds": [
+        "5cNrTU6o3Fw",
+        "B6FsWNUnRo0",
+        "8DvywoWv6fI",
+        "qnAnBTQ3zb4",
+        "6TZsd4toIbg"
+      ]
+    },
+    {
+      "query": "traffic between containers and services",
+      "expected": "kubernetes",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.43,
+      "lexicalIds": [
+        "5cNrTU6o3Fw",
+        "6TZsd4toIbg",
+        "qnAnBTQ3zb4",
+        "FXUUSfJO_J4",
+        "B6FsWNUnRo0"
+      ],
+      "hybridIds": [
+        "5cNrTU6o3Fw",
+        "B6FsWNUnRo0",
+        "qnAnBTQ3zb4"
+      ]
+    },
+    {
+      "query": "kubernetes networking",
+      "expected": "kubernetes",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 3.54,
+      "lexicalIds": [
+        "qnAnBTQ3zb4",
+        "6TZsd4toIbg",
+        "5cNrTU6o3Fw",
+        "B6FsWNUnRo0",
+        "tq9ng_Nz9j8"
+      ],
+      "hybridIds": [
+        "tq9ng_Nz9j8",
+        "B6FsWNUnRo0",
+        "qnAnBTQ3zb4",
+        "6TZsd4toIbg",
+        "5cNrTU6o3Fw"
+      ]
+    },
+    {
+      "query": "learn to write command line automation",
+      "expected": "linux",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 5.55,
+      "lexicalIds": [
+        "tK9Oc6AEnR4",
+        "oxuRxtrO2Ag",
+        "v-F3YLd6oMw",
+        "FXUUSfJO_J4",
+        "0OQJDd3QqQM"
+      ],
+      "hybridIds": [
+        "tK9Oc6AEnR4",
+        "oxuRxtrO2Ag",
+        "v-F3YLd6oMw",
+        "gfDE2a7MKjA",
+        "ZtqBQ68cfJc"
+      ]
+    },
+    {
+      "query": "automate repetitive terminal tasks with scripts",
+      "expected": "linux",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.62,
+      "lexicalIds": [
+        "ZtqBQ68cfJc",
+        "oxuRxtrO2Ag",
+        "sWbUDq4S6Y8",
+        "f0Hv0QrBAHw"
+      ],
+      "hybridIds": [
+        "oxuRxtrO2Ag",
+        "ZtqBQ68cfJc",
+        "v-F3YLd6oMw",
+        "tK9Oc6AEnR4",
+        "XKHEtdqhLK8"
+      ]
+    },
+    {
+      "query": "linux commands",
+      "expected": "linux",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 2.37,
+      "lexicalIds": [
+        "ZtqBQ68cfJc",
+        "sWbUDq4S6Y8",
+        "oxuRxtrO2Ag",
+        "v-F3YLd6oMw",
+        "tK9Oc6AEnR4"
+      ],
+      "hybridIds": [
+        "ZtqBQ68cfJc",
+        "sWbUDq4S6Y8",
+        "oxuRxtrO2Ag",
+        "v-F3YLd6oMw",
+        "tK9Oc6AEnR4"
+      ]
+    },
+    {
+      "query": "make web pages with markup and styling",
+      "expected": "web",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 5.48,
+      "lexicalIds": [
+        "Q33KBiDriJY",
+        "oYRda7UtuhA",
+        "6mbwJ2xhgzM",
+        "qz0aGYrrlhU",
+        "Rek0NWPCNOc"
+      ],
+      "hybridIds": [
+        "oYRda7UtuhA",
+        "HcOc7P5BMi4",
+        "6mbwJ2xhgzM",
+        "Q33KBiDriJY",
+        "qz0aGYrrlhU"
+      ]
+    },
+    {
+      "query": "html css website",
+      "expected": "web",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 3.2,
+      "lexicalIds": [
+        "qz0aGYrrlhU",
+        "oYRda7UtuhA",
+        "6mbwJ2xhgzM",
+        "HcOc7P5BMi4",
+        "Q33KBiDriJY"
+      ],
+      "hybridIds": [
+        "6mbwJ2xhgzM",
+        "oYRda7UtuhA",
+        "qz0aGYrrlhU",
+        "HcOc7P5BMi4",
+        "Q33KBiDriJY"
+      ]
+    },
+    {
+      "query": "understand neural networks and gradient descent",
+      "expected": "ml",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 7.54,
+      "lexicalIds": [
+        "IHZwWFHWa-w",
+        "Ilg3gGewQ5U",
+        "aircAruvnKk",
+        "B6FsWNUnRo0"
+      ],
+      "hybridIds": [
+        "IHZwWFHWa-w",
+        "Ilg3gGewQ5U",
+        "aircAruvnKk",
+        "09_LlHjoEiY",
+        "ukzFI9rgwfU"
+      ]
+    },
+    {
+      "query": "how a model learns by correcting its errors",
+      "expected": "ml",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.61,
+      "lexicalIds": [
+        "7eh4d6sabA0",
+        "f0Hv0QrBAHw",
+        "vAFl6tvrxOo",
+        "oYRda7UtuhA",
+        "B6FsWNUnRo0"
+      ],
+      "hybridIds": [
+        "7eh4d6sabA0",
+        "IHZwWFHWa-w",
+        "09_LlHjoEiY",
+        "aircAruvnKk",
+        "CBYHwZcbD-s"
+      ]
+    },
+    {
+      "query": "efficient algorithms and data structures",
+      "expected": "dsa",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 10.98,
+      "lexicalIds": [
+        "pkYVOmU3MgA",
+        "CBYHwZcbD-s",
+        "8hly31xKli0",
+        "RBSGKlAvoiM",
+        "09_LlHjoEiY"
+      ],
+      "hybridIds": [
+        "CBYHwZcbD-s",
+        "pkYVOmU3MgA",
+        "8hly31xKli0",
+        "RBSGKlAvoiM",
+        "09_LlHjoEiY"
+      ]
+    },
+    {
+      "query": "graphs and shortest paths",
+      "expected": "dsa",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 9.43,
+      "lexicalIds": [
+        "09_LlHjoEiY"
+      ],
+      "hybridIds": [
+        "09_LlHjoEiY",
+        "CBYHwZcbD-s",
+        "pkYVOmU3MgA",
+        "RBSGKlAvoiM",
+        "hlGoQC332VM"
+      ]
+    },
+    {
+      "query": "learn java object oriented programming",
+      "expected": "java",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 7.52,
+      "lexicalIds": [
+        "8cm1x4bC610",
+        "eIrMbAQSU34",
+        "UmnCZ7-9yDY",
+        "xk4_1vDrzzo",
+        "RRubcjpTkks"
+      ],
+      "hybridIds": [
+        "8cm1x4bC610",
+        "eIrMbAQSU34",
+        "xk4_1vDrzzo",
+        "RRubcjpTkks",
+        "UmnCZ7-9yDY"
+      ]
+    },
+    {
+      "query": "पायथन सीखना है",
+      "expected": "python",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 7.51,
+      "lexicalIds": [
+        "WGJJIrtnfpk",
+        "_uQrJ0TkZlc",
+        "XKHEtdqhLK8",
+        "sCOw5y1RQpY",
+        "8DvywoWv6fI"
+      ],
+      "hybridIds": [
+        "kqtD5dpn9C8",
+        "sCOw5y1RQpY",
+        "XKHEtdqhLK8",
+        "WGJJIrtnfpk",
+        "_uQrJ0TkZlc"
+      ]
+    },
+    {
+      "query": "python programming for a beginner",
+      "expected": "python",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 4.5,
+      "lexicalIds": [
+        "_uQrJ0TkZlc",
+        "WGJJIrtnfpk",
+        "XKHEtdqhLK8",
+        "sCOw5y1RQpY",
+        "gfDE2a7MKjA"
+      ],
+      "hybridIds": [
+        "_uQrJ0TkZlc",
+        "gfDE2a7MKjA",
+        "sCOw5y1RQpY",
+        "XKHEtdqhLK8",
+        "8DvywoWv6fI"
+      ]
+    },
+    {
+      "query": "जावा प्रोग्रामिंग सीखना",
+      "expected": "java",
+      "lexicalTop1": true,
+      "hybridTop1": true,
+      "lexicalRR": 1.0,
+      "hybridRR": 1.0,
+      "hybridMs": 6.23,
+      "lexicalIds": [
+        "UmnCZ7-9yDY",
+        "eIrMbAQSU34",
+        "8cm1x4bC610",
+        "xk4_1vDrzzo",
+        "RRubcjpTkks"
+      ],
+      "hybridIds": [
+        "8cm1x4bC610",
+        "UmnCZ7-9yDY",
+        "eIrMbAQSU34",
+        "RRubcjpTkks",
+        "xk4_1vDrzzo"
+      ]
+    }
+  ]
+}

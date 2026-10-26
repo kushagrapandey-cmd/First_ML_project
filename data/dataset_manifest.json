@@ -1,0 +1,25 @@
+{
+  "originalRows": 176,
+  "originalUniqueVideos": 140,
+  "cleanedLegacyVideos": 139,
+  "duplicateOccurrencesRemoved": 36,
+  "malformedUniqueIdsRemoved": 1,
+  "activeCatalogueVideos": 54,
+  "activeTopics": {
+    "python": 12,
+    "web": 6,
+    "java": 6,
+    "ml": 5,
+    "sql": 10,
+    "linux": 5,
+    "dsa": 5,
+    "custom": 5
+  },
+  "legacyPolicy": "Cleaned legacy candidates are preserved separately; no unverified legacy rows are silently promoted into the active catalogue.",
+  "training": "Pretrained embeddings are used for inference. No claim of training this neural model on the workshop dataset.",
+  "sources": [
+    "legacy/Ytvideoes2.pkl",
+    "api/catalog.json",
+    "YouTube Data API metadata"
+  ]
+}

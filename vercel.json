@@ -4,8 +4,9 @@
   "outputDirectory": "public",
   "functions": {
     "api/recommend.py": {
-      "includeFiles": "api/catalog.json",
-      "maxDuration": 30
+      "includeFiles": "{api/catalog.json,models/semantic/**,lib/*.py}",
+      "maxDuration": 30,
+      "excludeFiles": "{legacy/**,tests/**,node_modules/**}"
     },
     "api/workspace.js": {
       "maxDuration": 30

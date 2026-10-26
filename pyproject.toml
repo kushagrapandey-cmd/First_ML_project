@@ -1,5 +1,5 @@
 [project]
 name = "ytguide"
-version = "2.0.0"
+version = "3.3.0"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["numpy==2.2.6", "onnxruntime==1.23.2", "tokenizers==0.22.1"]

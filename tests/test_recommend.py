@@ -1,7 +1,10 @@
 import os
 import unittest
 from unittest.mock import patch
-from api.recommend import rank, recommend, CATALOG, TOPICS, seconds, live_candidates, CACHE, SearchUnavailable
+from api.recommend import rank, recommend as _recommend, CATALOG, TOPICS, seconds, live_candidates, CACHE, SearchUnavailable
+
+def recommend(params):
+    return _recommend({**params,'ranking':'lexical'})
 
 class RetrievalTests(unittest.TestCase):
     def test_every_topic_has_a_unique_shortlist(self):
