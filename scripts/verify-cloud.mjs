@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import workspace from '../api/workspace.js';
 import authProxy from '../api/auth.js';
+import {decodeJwt,decodeProtectedHeader} from 'jose';
 import {getSQL} from '../lib/db.js';
 if(process.env.VERCEL_ENV!=='preview') {
   console.log('Cloud fixture tests run only against preview branches.');
@@ -29,7 +30,7 @@ if(process.env.VERCEL_ENV!=='preview') {
     const fixture={id:signup.value.user.id,password,cookie:signup.cookie};fixtures.push(fixture);
     const token=await proxy('token',null,fixture.cookie);
     if(!token.value.token)throw new Error('Preview signup did not produce an authenticated session: '+(token.value.code||token.response.status));
-    fixture.token=token.value.token;return fixture;
+    fixture.token=token.value.token;const claims=decodeJwt(fixture.token);console.log('QA_JWT_CONTRACT',JSON.stringify({algorithm:decodeProtectedHeader(fixture.token).alg,issuerMatchesOrigin:claims.iss===new URL(base).origin,issuerMatchesBase:claims.iss===base,audienceMatchesOrigin:claims.aud===new URL(base).origin,audienceMatchesBase:claims.aud===base,expiresIn:claims.exp-Math.floor(Date.now()/1000)}));return fixture;
   }
   async function call(fixture,body,expected=200){
     let status,result;

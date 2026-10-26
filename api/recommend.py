@@ -6,6 +6,7 @@ import re
 import time
 import threading
 import logging
+import unicodedata
 from collections import Counter
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler
@@ -29,7 +30,8 @@ LOCK = threading.Lock()
 
 
 def tokens(text):
-    return [w for w in re.findall(r'[a-z0-9]+', text.lower()) if w not in STOP]
+    text=unicodedata.normalize('NFKC',text).casefold()
+    return [w for w in re.findall(r'[^\W_]+(?:[\u0900-\u097f]+)?',text,re.UNICODE) if w not in STOP]
 
 
 def rank(rows, query, limit=5):
@@ -140,7 +142,7 @@ def recommend(params):
     notice = 'Catalogue mode: maintained candidates, not a live YouTube search. Availability can change.'
     if source != 'catalogue' and key:
         try:
-            rows = live_candidates(topic, language, key, goal)
+            rows = cached_live_candidates(topic, language, key, goal)
             mode = 'youtube'
             notice = 'Live YouTube candidates, cached for up to 15 minutes. Ranking estimates relevance, not teaching quality.'
         except Exception:
@@ -165,6 +167,13 @@ def recommend(params):
     ranked = rank(rows, query)
     return dict(videos=ranked, topic=topic, source=mode, notice=notice, candidates=len(rows),
                 algorithm='TF-IDF cosine similarity + channel diversity', liveConfigured=bool(key))
+
+
+def cached_live_candidates(topic,language,key,goal=''):
+    if not os.environ.get('DATABASE_URL'):
+        return live_candidates(topic,language,key,goal)
+    from lib.search_cache import retrieve
+    return retrieve(topic,language,goal,lambda:live_candidates(topic,language,key,goal))
 
 
 class SearchUnavailable(Exception):

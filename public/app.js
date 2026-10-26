@@ -3,6 +3,11 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 let storageScope = 'guest';
 let authenticated = false;
+let pendingIntent = null;
+function captureIntent(button){
+  const id=button.dataset.save||currentVideo?.id;
+  pendingIntent={video:[...videos,...saved,...Object.values(lessonIndex)].find(v=>v.id===id)||null,action:button.matches('[data-save],#save-lesson')?'save':button.id==='mark-complete'?'complete':'open'};
+}
 const personalKey = key => key !== 'ytguide.theme';
 function requireAccount(){
   if(authenticated)return true;
@@ -93,6 +98,7 @@ function card(video, index, workspace = false) {
   return `<article class="video-card"><button class="thumb-button" data-watch="${video.id}" aria-label="Watch ${escapeHtml(video.title)}"><span class="thumb-fallback" aria-hidden="true"><span>YTGuide / ${escapeHtml(({python:"PYTHON",web:"WEB DEVELOPMENT",java:"JAVA",ml:"MACHINE LEARNING",sql:"SQL",linux:"LINUX & BASH",dsa:"DATA STRUCTURES"})[video.topic] || "STUDY LESSON")}</span><strong>${escapeHtml(video.title)}</strong><i>YOUR NEXT LESSON ↗</i></span><img src="https://i.ytimg.com/vi/${video.id}/hqdefault.jpg" alt="" loading="lazy" width="480" height="270"><span class="rank-badge">${workspace === true ? 'SAVED LESSON' : `PICK ${String(index+1).padStart(2,'0')}`}</span><span class="play" aria-hidden="true">▶</span></button><div class="card-body"><div class="card-meta"><span>${escapeHtml(languageLabel(video.language))}</span><span>${escapeHtml(durationLabel(video.duration))}</span></div>${positions[video.id] > 0 ? `<span class="resume-label">Resume from ${stamp(positions[video.id])}</span>` : ''}${done ? '<span class="complete-badge">✓ Marked complete</span>' : ''}<h3 class="card-title">${escapeHtml(video.title)}</h3><p class="card-channel">${escapeHtml(video.channel)}</p><details class="match-details"><summary>Why this lesson?</summary><p>${escapeHtml(video.reason || 'You saved this lesson to your workspace.')}.</p><p>Text relevance, not a quality score. ${video.source === 'youtube' ? 'Retrieved from YouTube.' : 'From the study catalogue.'}</p></details><div class="card-actions"><button class="watch-button" data-watch="${video.id}">Watch lesson <span aria-hidden="true">↗</span></button><button class="save-button" data-save="${video.id}" aria-pressed="${isSaved(video.id)}" aria-label="${isSaved(video.id)?'Unsave':'Save'} ${escapeHtml(video.title)}">${isSaved(video.id)?'✓':'+'}</button></div></div></article>`;
 }
 function updateWorkspace() {
+  for(const selector of ['.workspace-tools','#collection-form','#collection-list'])$(selector).hidden=!authenticated;
   $('#saved-count').textContent = saved.length;
   $('#stat-saved').textContent = saved.length;
   $('#stat-complete').textContent = completed.length;
@@ -117,8 +123,8 @@ function updateWorkspace() {
 document.addEventListener('click',event=>{
   const button=event.target.closest('button');
   if(!button)return;
-  if(button.matches('[data-signin]')){event.preventDefault();window.dispatchEvent(new Event('ytguide:signin'));return;}
-  if(button.matches('[data-save],#save-lesson,#mark-complete,#add-bookmark,#add-to-collection,#export-notes,#export-backup,[data-delete-collection],[data-rename-collection],[data-remove-membership],[data-remove-bookmark]')&&!authenticated){event.preventDefault();event.stopImmediatePropagation();requireAccount();}
+  if(button.matches('[data-signin]')){pendingIntent=currentVideo?{video:{...currentVideo},action:'open'}:null;event.preventDefault();window.dispatchEvent(new Event('ytguide:signin'));return;}
+  if(button.matches('[data-save],#save-lesson,#mark-complete,#add-bookmark,#add-to-collection,#export-notes,#export-backup,[data-delete-collection],[data-rename-collection],[data-remove-membership],[data-remove-bookmark]')&&!authenticated){event.preventDefault();event.stopImmediatePropagation();captureIntent(button);requireAccount();}
 },true);
 document.addEventListener('submit',event=>{if(event.target.id==='collection-form'&&!authenticated){event.preventDefault();event.stopImmediatePropagation();requireAccount();}},true);
 function toggleSave(video) {
@@ -134,8 +140,9 @@ function toggleSave(video) {
 }
 function showView(view, moveFocus = true) {
   if (!['discover','workspace','about'].includes(view)) return;
+  const changed=currentView!==view;
   currentView = view;
-  persistNavigation();
+  persistNavigation(changed&&moveFocus);
   ['discover','workspace','about'].forEach(name => { $(`#${name}-view`).hidden = name !== view; });
   $$('.nav-item').forEach(button => {
     const active = button.dataset.view === view;
@@ -148,6 +155,8 @@ function showView(view, moveFocus = true) {
 }
 async function findLessons(event) {
   event?.preventDefault();
+  updateGoalRequirement();
+  if($('#topic').value==='custom'&&!$('#goal').value.trim()){showSearchStart();$('#goal').focus();return;}
   persistNavigation();
   request?.abort();
   request = new AbortController();
@@ -158,6 +167,7 @@ async function findLessons(event) {
   $('#results').setAttribute('aria-busy', 'true');
   $('#results').innerHTML = '<div class="loading" role="status">Finding a focused place to start…</div>';
   $('#source-notice').textContent = '';
+  $('#result-meta').textContent = '';
   const params = new URLSearchParams(new FormData($('#search-form')));
   try {
     const response = await fetch(`/api/recommend?${params}`, {signal:request.signal});
@@ -167,7 +177,7 @@ async function findLessons(event) {
     videos = result.videos.filter(validVideo);
     $('#result-meta').textContent = `${videos.length} lessons · ${result.candidates} candidates`;
     $('#source-notice').textContent = result.notice;
-    $('#results').innerHTML = videos.length ? videos.map((v, i) => card(v, i)).join('') : '<div class="empty-state"><h3>No matching lessons in this source.</h3><p>Try Live YouTube, broaden your goal, or search YouTube directly. The study catalogue has limited coverage.</p><a class="secondary" href="${escapeHtml(youtubeSearchURL())}" target="_blank" rel="noopener noreferrer">Search this topic on YouTube ↗</a><button class="secondary" id="clear-filters">Reset filters</button></div>';
+    $('#results').innerHTML = videos.length ? videos.map((v, i) => card(v, i)).join('') : `<div class="empty-state"><h3>No matching lessons in this source.</h3><p>Try Live YouTube, broaden your goal, or search YouTube directly. The study catalogue has limited coverage.</p><a class="secondary" href="${escapeHtml(youtubeSearchURL())}" target="_blank" rel="noopener noreferrer">Search this topic on YouTube ↗</a><button class="secondary" id="clear-filters">Reset filters</button></div>`;
   } catch (error) {
     if (ownGeneration !== generation) return;
     $('#result-meta').textContent = '';
@@ -311,6 +321,8 @@ setTheme(read('ytguide.theme','light') === 'dark' ? 'dark' : 'light');
 }));
 window.YTGuide = {
   toast, read, write, validVideo,
+  resumeIntent(){const intent=pendingIntent;pendingIntent=null;if(!intent?.video)return;openLesson(intent.video);if(intent.action==='save'&&!isSaved(intent.video.id))toggleSave(intent.video);if(intent.action==='complete'&&!completed.includes(intent.video.id))$('#mark-complete').click();},
+  clearIntent(){pendingIntent=null;},
   setAuthenticated(value){authenticated=!!value;updateAccountControls();updateWorkspace();},
   get authenticated(){return authenticated;},
   get scope(){return storageScope;},
@@ -348,10 +360,12 @@ window.YTGuide = {
   },
   flushNote(){if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}},
 };
+const hadSearchContext=new URLSearchParams(location.search).has('topic');
 restoreNavigation();
 updateAccountControls();
 showView(currentView,false);
-findLessons();
+updateGoalRequirement();
+if(hadSearchContext&&currentView==='discover')findLessons();else showSearchStart();
 window.dispatchEvent(new Event('ytguide:ready'));
 
 function renderResults(){if(videos.length)$('#results').innerHTML=videos.map((v,i)=>card(v,i)).join('');}
@@ -451,7 +465,7 @@ function savePosition(force=false){
   emitMutation('lesson',{video:currentVideo,patch:{position}});
 }
 setInterval(()=>{
-  if(currentVideo&&playerReady){const position=playerInstance.getCurrentTime();if(Number.isFinite(position))$('#playback-position').textContent=`At ${stamp(position)} · progress saves about every 15 seconds`;savePosition();}
+  if(currentVideo&&playerReady){const position=playerInstance.getCurrentTime();if(Number.isFinite(position))$('#playback-position').textContent=`At ${stamp(position)} · ${authenticated?'progress syncs to your account':'sign in to save progress'}`;savePosition();}
 },1000);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)savePosition(true);});
 function renderNoteConflict(){
@@ -474,9 +488,10 @@ $('#export-backup').addEventListener('click',()=>{
   const a=document.createElement('a');a.href=url;a.download='YTGuide-workspace.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 
-function persistNavigation(){
+function persistNavigation(push=false){
   const params=new URLSearchParams(new FormData($('#search-form')));
-  history.replaceState(null,'',location.pathname+'?'+params.toString()+'#'+currentView);
+  const url=location.pathname+'?'+params.toString()+'#'+currentView;
+  if(push)history.pushState(null,'',url);else history.replaceState(null,'',url);
 }
 function restoreNavigation(){
   const params=new URLSearchParams(location.search);
@@ -488,8 +503,12 @@ function restoreNavigation(){
   const view=location.hash.slice(1);
   currentView=['discover','workspace','about'].includes(view)?view:'discover';
 }
-for(const name of ['topic','language','source','length'])$('#'+name).addEventListener('change',()=>findLessons());
+let filterDebounce;
+for(const name of ['topic','language','source','length'])$('#'+name).addEventListener('change',()=>{updateGoalRequirement();persistNavigation();clearTimeout(filterDebounce);filterDebounce=setTimeout(()=>findLessons(),350);});
 $('#goal').addEventListener('input',persistNavigation);
-window.addEventListener('popstate',()=>{restoreNavigation();showView(currentView,false);findLessons();});
+window.addEventListener('popstate',()=>{restoreNavigation();updateGoalRequirement();showView(currentView,false);if(currentView==='discover')findLessons();});
 
 function youtubeSearchURL(){const topic=$('#topic');return 'https://www.youtube.com/results?'+new URLSearchParams({search_query:(topic.value==='custom'?'':topic.selectedOptions[0].textContent+' ')+$('#goal').value+' tutorial'+($('#language').value==='hi'?' in Hindi':'')});}
+
+function updateGoalRequirement(){const required=$('#topic').value==='custom';$('#goal').required=required;$('#goal-requirement').textContent=required?'Required for this topic':'Optional';}
+function showSearchStart(){$('#result-meta').textContent='';$('#source-notice').textContent='Choose a subject and search when you are ready.';$('#results').innerHTML='<div class="empty-state"><h3>What would you like to understand?</h3><p>Choose a subject or enter your own topic, then select Find my lessons.</p></div>';}

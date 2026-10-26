@@ -6,7 +6,7 @@ import {createClient} from '../src/auth-sdk.js';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const script=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
 const lesson={id:'AAAAAAAAAAA',title:'SQL joins lesson',channel:'Fixture',topic:'sql',language:'en'};
-async function page(url='https://ytguide.test/'){
+async function page(url='https://ytguide.test/?topic=sql&source=catalogue#discover'){
   const dom=new JSDOM(html,{url,runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window;w.AbortSignal=AbortSignal;w.scrollTo=()=>{};
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
@@ -39,9 +39,9 @@ test('Refresh restores selected topic, goal, filters and workspace view from URL
   try{
     assert.equal($('#topic').value,'sql');assert.equal($('#goal').value,'joins');assert.equal($('#language').value,'hi');
     assert.equal($('#workspace-view').hidden,false);assert.match($('#workspace-results').textContent,/needs an account/);
-    assert.match(requests[0],/topic=sql/);assert.match(requests[0],/goal=joins/);
+    assert.equal(requests.length,0,'Opening a workspace must not spend YouTube quota in the background');
     $('#topic').value='linux';$('#topic').dispatchEvent(new w.Event('change'));
-    await new Promise(resolve=>setImmediate(resolve));
+    await new Promise(resolve=>setTimeout(resolve,400));
     assert.match(requests.at(-1),/topic=linux/);assert.match(w.location.search,/topic=linux/);assert.equal(w.location.hash,'#workspace');
   }finally{dom.window.close();}
 });
@@ -99,13 +99,15 @@ test('Sign-in form connects cloud workspace, syncs a save, and logout removes ac
   };
   try{
     await w.eval(accountScript.replace("await import('/auth-sdk.js')",'({createClient:()=>window.testClient})'));
-    $('#account-button').click();assert.equal($('#account-dialog').open,true);
+    $('[data-save]').click();assert.equal($('#account-dialog').open,true);
     assert.equal($('#account-password').minLength,1);
     $('#account-email').value='fixture@example.invalid';$('#account-password').value='eight123';
     $('#account-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
     await new Promise(resolve=>setImmediate(resolve));
     assert.equal(w.YTGuide.authenticated,true);assert.equal($('#account-dialog').open,false);
-    assert.equal(w.YTGuide.state.saved[0].title,'Cloud lesson');
+    assert.ok(w.YTGuide.state.saved.some(v=>v.title==='Cloud lesson'));
+    assert.equal($('#lesson-dialog').open,true,'Return to the requested lesson after sign-in');
+    assert.ok(w.YTGuide.state.saved.some(v=>v.id===lesson.id),'Complete the original Save action');
     $('[data-save]').click();await new Promise(resolve=>setImmediate(resolve));
     assert.ok(mutations.some(m=>m.action==='lesson'&&m.patch.saved===true));
     assert.equal($('#sync-status').textContent,'Cloud synced ✓');
@@ -124,4 +126,21 @@ test('A failed initial account connection can be retried from Sign in without re
     $('#account-button').click();await new Promise(resolve=>setImmediate(resolve));
     assert.equal(attempts,2);assert.equal($('#account-dialog').open,true);
   }finally{dom.window.close();}
+});
+test('Cold visits show a search invitation without spending live retrieval quota',async()=>{
+ const {dom,$,requests}=await page('https://ytguide.test/');
+ try{assert.equal(requests.length,0);assert.match($('#results').textContent,/What would you like/);assert.equal($('#collection-form').hidden,true);assert.equal($('.workspace-tools').hidden,true);}
+ finally{dom.window.close();}
+});
+test('Other topic requires a goal and does not submit an empty automatic search',async()=>{
+ const {dom,w,$,requests}=await page();
+ try{
+  const before=requests.length;$('#topic').value='custom';$('#topic').dispatchEvent(new w.Event('change'));
+  await new Promise(r=>setTimeout(r,400));assert.equal($('#goal').required,true);assert.match($('#goal-requirement').textContent,/Required/);assert.equal(requests.length,before);
+ }finally{dom.window.close();}
+});
+test('Empty-result YouTube link encodes the actual topic and question',async()=>{
+ const {dom,w,$}=await page();
+ try{w.fetch=async()=>({ok:true,json:async()=>({videos:[],notice:'No match',candidates:0})});$('#goal').value='SQL joins';$('#search-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setImmediate(r));const href=$('#results a').href;assert.ok(href.startsWith('https://www.youtube.com/results?'));assert.match(href,/SQL\+joins/);assert.ok(!href.includes('escapeHtml'));}
+ finally{dom.window.close();}
 });

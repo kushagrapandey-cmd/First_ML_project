@@ -139,3 +139,16 @@ The repair is deployed to the existing Vercel `ytguide` project. Production live
 The owner explicitly authorized both GitHub and Vercel publication. The repair was published to GitHub `main` at `b6770f2f3171261ed78645760c793765069a2664`; Vercel production deployment `dpl_EwD5jV97EanwXDVtR5s4qt8xDEwj` reached READY from that exact commit. No paid plan or AI subscription was enabled. The attached Neon resource reports the Free plan, and Vercel’s API confirms Hobby. No paid generative AI is configured. YouTube uses the owner’s API key and is subject to Google quota limits.
 
 MediConnect uses its own Express password/session implementation with Neon as its database. YTGuide uses Neon Managed Auth for identity plus a separate authenticated workspace API. Managed Auth is a design choice, not a requirement for using PostgreSQL. Both applications enforce record ownership in their server APIs.
+
+## Phase 1 reliability release — 27 October 2026
+
+- Unicode/Hindi-script goals are accepted; the Other topic field states when a goal is required.
+- Anonymous workspace tools are hidden. Guest playback explicitly says progress requires sign-in.
+- Signing in returns to the lesson and completes the requested save/completion action. Recovery screens have Back to sign in.
+- Browser page navigation creates history entries. Fresh visits show an invitation to search instead of consuming provider quota immediately. Rapid filter changes are coalesced.
+- Fixed the direct YouTube link in empty-result states.
+- Public live candidate retrieval uses a PostgreSQL cache shared across function instances, 15-minute successful results and short failure caching. Database leases prevent duplicate in-flight retrievals. A conservative shared UTC-day budget reserves 101 units per retrieval, capped at 8,000; Google quotas still apply independently. The cache fails closed if unavailable rather than multiplying provider calls.
+- Python uses the HTTP SQL endpoint/header contract from the pinned official Neon serverless driver; connection strings stay in server request headers. SQL is parameterized. No extra storage service or paid plan was added.
+- Signing-key fetch timeouts return a retryable service error instead of claiming the user password/session is wrong.
+
+The semantic model remains a separate Phase 2 release; no neural inference is claimed by Phase 1.

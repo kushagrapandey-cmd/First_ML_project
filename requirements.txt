@@ -1,1 +1,1 @@
-# Production uses the Python standard library only.
+# Phase 1 uses the Python standard library.

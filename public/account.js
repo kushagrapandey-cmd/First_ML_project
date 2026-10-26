@@ -31,6 +31,8 @@
     $('#otp-field').hidden=!verify&&!newPassword;$('#account-otp').required=verify||newPassword;
     $('#account-submit').textContent={signin:'Sign in',signup:'Create account',verify:'Verify email',reset:'Send reset code',newPassword:'Reset password'}[mode];
     $('#account-switch').hidden=verify;$('#account-switch').textContent=signup?'Already registered? Sign in':'Create an account';
+    $('#back-signin').hidden=mode==='signin'||mode==='signup';
+    $('#account-switch').hidden=mode!=='signin'&&mode!=='signup';
     $('#forgot-password').hidden=mode!=='signin';$('#send-verification').hidden=!verify;
     message('');
   }
@@ -119,8 +121,10 @@
     else processQueue();status();
   });
   $('#account-button').addEventListener('click',openAccount);
-  $('#close-account').addEventListener('click',()=>{$('#account-dialog').close();$('#account-password').value='';$('#account-otp').value='';});
+  $('#close-account').addEventListener('click',()=>{$('#account-dialog').close();api.clearIntent();$('#account-password').value='';$('#account-otp').value='';});
   $('#account-switch').addEventListener('click',()=>setMode(mode==='signup'?'signin':'signup'));
+  $('#back-signin').addEventListener('click',()=>setMode('signin'));
+  $('#account-dialog').addEventListener('cancel',()=>api.clearIntent());
   $('#forgot-password').addEventListener('click',()=>setMode('reset'));
   $('#send-verification').addEventListener('click',async()=>{
     try{const result=await client.emailOtp.sendVerificationOtp({email:$('#account-email').value.trim(),type:'email-verification'});if(result.error)throw new Error(result.error.message);message('Verification code requested. Check your inbox and spam folder.');}catch(e){message(e.message);}
@@ -148,7 +152,7 @@
       }
       const session=await client.getSession();
       if(session.error)throw new Error(session.error.message);
-      if(session.data?.user){await connect(session.data.user);$('#account-dialog').close();$('#account-password').value='';$('#account-otp').value='';api.toast('Signed in. Your account workspace is ready.');}
+      if(session.data?.user){await connect(session.data.user);$('#account-dialog').close();$('#account-password').value='';$('#account-otp').value='';api.toast('Signed in. Your account workspace is ready.');api.resumeIntent();}
       else if(mode==='signup'||mode==='verify'){setMode('verify');message('Verify your email, then sign in.');}
       else throw new Error('Sign-in returned no session. Please retry; cookies must be enabled for this site.');
     }catch(error){if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}message(error.message||'Account service is unavailable.');}

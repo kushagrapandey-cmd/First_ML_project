@@ -100,3 +100,9 @@ class GoalRegressionTests(unittest.TestCase):
             with self.assertRaises(SearchUnavailable):recommend({'source':'live'})
 
 if __name__=='__main__':unittest.main()
+
+class UnicodeRegressionTests(unittest.TestCase):
+    def test_hindi_query_is_not_treated_as_empty(self):
+        from api.recommend import tokens
+        self.assertTrue(tokens('पायथन सीखना है'))
+        self.assertEqual(recommend({'topic':'custom','goal':'पायथन सीखना है','source':'catalogue'})['videos'],[])

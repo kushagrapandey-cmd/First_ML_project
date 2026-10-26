@@ -62,3 +62,12 @@ DOM account tests use mocked services. They validate frontend behaviour, not rea
 Neon production domain configuration is fixed. The attached `ytguide-db` resource reports Free (`free_v3`), no credit card required. Vercel’s API additionally confirms Hobby. No plan upgrade, AI subscription or wildcard-domain access was enabled.
 
 Provider domain setup reference: https://neon.com/docs/auth/guides/configure-domains .
+
+## Phase 1 verification — approved release
+
+- 19 Node/DOM and 29 Python checks pass, including Unicode goals, empty custom-topic handling, no cold-visit provider call, the corrected fallback URL and preserving/completing a Save action after login.
+- Real isolated Neon branch `br-round-bread-b33r9v1p`: signup, session cookies, JWT signature/issuer/audience/expiry, workspace CRUD, notes/version conflicts, collections, bookmarks, playback positions, idempotent imports, two-user isolation, logout and forged-token rejection passed.
+- The environment's Node fetch took 9–12 seconds for public signing keys, exceeding the former 7-second timeout. QA used urllib over verified TLS for that exact public JWKS URL while retaining jose signature/claim checks. Production now permits a 15-second key lookup and distinguishes unavailable verification from an invalid session.
+- Shared candidate caching passed against the isolated database across independent HTTP connections, invoking the candidate fetch only once.
+- Temporary fixture users/records are cleaned by the test runner; the disposable branch expires automatically after one day. No production test accounts were created.
+- A successful owner browser session remains a separate check; these real backend tests do not claim a successful owner password submission.
