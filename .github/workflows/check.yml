@@ -9,5 +9,8 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - run: npm ci --ignore-scripts
       - run: python3 -m unittest discover -s tests -v
-      - run: node --check public/app.js
+      - run: npm run check
+      - run: npm run test:server
+      - run: npm run build

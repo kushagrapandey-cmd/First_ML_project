@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 node_modules/
 test-results/
+
+public/auth-sdk.js
