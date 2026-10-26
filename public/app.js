@@ -36,11 +36,11 @@ let request = null;
 let generation = 0;
 const isSaved = id => saved.some(v => v.id === id);
 const languageLabel = language => ({en:'English', hi:'Hindi'}[language] || 'Language unconfirmed');
-const durationLabel = seconds => Number.isFinite(seconds) && seconds > 0 ? `${Math.round(seconds/60)} min` : 'Length unconfirmed';
+const durationLabel = seconds => Number.isFinite(seconds) && seconds > 0 ? (seconds >= 3600 ? `${Math.floor(seconds/3600)}h ${Math.floor((seconds%3600)/60)}m` : `${Math.ceil(seconds/60)} min`) : 'Length unconfirmed';
 
-function card(video, index) {
+function card(video, index, workspace = false) {
   const done = completed.includes(video.id);
-  return `<article class="video-card"><button class="thumb-button" data-watch="${video.id}" aria-label="Watch ${escapeHtml(video.title)}"><img src="https://i.ytimg.com/vi/${video.id}/hqdefault.jpg" alt="" loading="lazy" width="480" height="270"><span class="rank-badge">${currentView === 'workspace' ? 'SAVED LESSON' : `PICK ${String(index+1).padStart(2,'0')}`}</span><span class="play" aria-hidden="true">▶</span></button><div class="card-body"><div class="card-meta"><span>${escapeHtml(languageLabel(video.language))}</span><span>${escapeHtml(durationLabel(video.duration))}</span></div>${done ? '<span class="complete-badge">✓ Marked complete</span>' : ''}<h3 class="card-title">${escapeHtml(video.title)}</h3><p class="card-channel">${escapeHtml(video.channel)}</p><details class="match-details"><summary>Why this lesson?</summary><p>${escapeHtml(video.reason || 'You saved this lesson to your workspace.')}.</p><p>Text relevance, not a quality score. ${video.source === 'youtube' ? 'Retrieved from YouTube.' : 'From the study catalogue.'}</p></details><div class="card-actions"><button class="watch-button" data-watch="${video.id}">Watch lesson <span aria-hidden="true">↗</span></button><button class="save-button" data-save="${video.id}" aria-pressed="${isSaved(video.id)}" aria-label="${isSaved(video.id)?'Unsave':'Save'} ${escapeHtml(video.title)}">${isSaved(video.id)?'✓':'+'}</button></div></div></article>`;
+  return `<article class="video-card"><button class="thumb-button" data-watch="${video.id}" aria-label="Watch ${escapeHtml(video.title)}"><span class="thumb-fallback" aria-hidden="true"><span>YTGuide / ${escapeHtml(({python:"PYTHON",web:"WEB DEVELOPMENT",java:"JAVA",ml:"MACHINE LEARNING",sql:"SQL",linux:"LINUX & BASH",dsa:"DATA STRUCTURES"})[video.topic] || "STUDY LESSON")}</span><strong>${escapeHtml(video.title)}</strong><i>YOUR NEXT LESSON ↗</i></span><img src="https://i.ytimg.com/vi/${video.id}/hqdefault.jpg" alt="" loading="lazy" width="480" height="270"><span class="rank-badge">${workspace === true ? 'SAVED LESSON' : `PICK ${String(index+1).padStart(2,'0')}`}</span><span class="play" aria-hidden="true">▶</span></button><div class="card-body"><div class="card-meta"><span>${escapeHtml(languageLabel(video.language))}</span><span>${escapeHtml(durationLabel(video.duration))}</span></div>${done ? '<span class="complete-badge">✓ Marked complete</span>' : ''}<h3 class="card-title">${escapeHtml(video.title)}</h3><p class="card-channel">${escapeHtml(video.channel)}</p><details class="match-details"><summary>Why this lesson?</summary><p>${escapeHtml(video.reason || 'You saved this lesson to your workspace.')}.</p><p>Text relevance, not a quality score. ${video.source === 'youtube' ? 'Retrieved from YouTube.' : 'From the study catalogue.'}</p></details><div class="card-actions"><button class="watch-button" data-watch="${video.id}">Watch lesson <span aria-hidden="true">↗</span></button><button class="save-button" data-save="${video.id}" aria-pressed="${isSaved(video.id)}" aria-label="${isSaved(video.id)?'Unsave':'Save'} ${escapeHtml(video.title)}">${isSaved(video.id)?'✓':'+'}</button></div></div></article>`;
 }
 function updateWorkspace() {
   $('#saved-count').textContent = saved.length;
@@ -48,7 +48,7 @@ function updateWorkspace() {
   $('#stat-complete').textContent = completed.length;
   $('#stat-notes').textContent = Object.values(notes).filter(n => n.trim()).length;
   if (currentView === 'workspace') {
-    $('#workspace-results').innerHTML = saved.length ? saved.map(card).join('') : '<div class="empty-state"><h3>Your next chapter starts with a save.</h3><p>Tap + on a lesson to keep it here. Your notes and progress stay on this device.</p><button class="primary" data-view="discover">Discover lessons ↗</button></div>';
+    $('#workspace-results').innerHTML = saved.length ? saved.map((v, i) => card(v, i, true)).join('') : '<div class="empty-state"><h3>Your next chapter starts with a save.</h3><p>Tap + on a lesson to keep it here. Your notes and progress stay on this device.</p><button class="primary" data-view="discover">Discover lessons ↗</button></div>';
   }
   $$('[data-save]').forEach(button => {
     const v = [...videos, ...saved].find(v => v.id === button.dataset.save);
@@ -101,7 +101,7 @@ async function findLessons(event) {
     videos = result.videos.filter(validVideo);
     $('#result-meta').textContent = `${videos.length} lessons · ${result.candidates} candidates`;
     $('#source-notice').textContent = result.notice;
-    $('#results').innerHTML = videos.length ? videos.map(card).join('') : '<div class="empty-state"><h3>No lessons match these filters.</h3><p>Try any language or any length. We prefer an honest empty result to an unrelated lesson.</p><button class="secondary" id="clear-filters">Reset filters</button></div>';
+    $('#results').innerHTML = videos.length ? videos.map((v, i) => card(v, i)).join('') : '<div class="empty-state"><h3>No lessons match these filters.</h3><p>Try any language or any length. We prefer an honest empty result to an unrelated lesson.</p><button class="secondary" id="clear-filters">Reset filters</button></div>';
   } catch (error) {
     if (ownGeneration !== generation) return;
     $('#result-meta').textContent = '';
@@ -129,7 +129,11 @@ function openLesson(video) {
   updateWorkspace();
   $('#lesson-dialog').showModal();
 }
-$('#lesson-dialog').addEventListener('close', () => { $('#player').replaceChildren(); currentVideo = null; });
+$('#lesson-dialog').addEventListener('close', () => {
+  $('#player').replaceChildren(); currentVideo = null;
+  document.body.append($('#timer-widget'));
+  $('#timer-widget').classList.remove('embedded');
+});
 $('#close-lesson').addEventListener('click', () => $('#lesson-dialog').close());
 $('#lesson-notes').addEventListener('input', () => {
   if (!currentVideo) return;
@@ -149,7 +153,7 @@ $('#mark-complete').addEventListener('click', () => {
   write('ytguide.completed.v2', completed);
   $('#mark-complete').textContent = completed.includes(id) ? 'Marked complete ✓' : 'Mark complete ✓';
   $('#mark-complete').setAttribute('aria-pressed', String(completed.includes(id)));
-  if (videos.length) $('#results').innerHTML = videos.map(card).join('');
+  if (videos.length) $('#results').innerHTML = videos.map((v, i) => card(v, i)).join('');
   updateWorkspace();
 });
 $('#export-notes').addEventListener('click', () => {
@@ -164,6 +168,9 @@ $('#export-notes').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
+document.addEventListener('error', (event) => {
+  if (event.target instanceof HTMLImageElement) event.target.classList.add('unavailable');
+}, true);
 document.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button) return;
@@ -199,9 +206,14 @@ function updateTimer() {
   $('#timer-display').textContent = `${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
   $('#timer-toggle').textContent = deadline !== null ? 'Pause' : remaining === 0 ? 'Start again' : remaining === timerDuration ? 'Start' : 'Resume';
 }
-function openTimer() { $('#timer-widget').hidden = false; }
+function openTimer() { document.body.append($('#timer-widget')); $('#timer-widget').classList.remove('embedded'); $('#timer-widget').hidden = false; }
 $('#start-focus').addEventListener('click', openTimer);
-$('#lesson-timer').addEventListener('click', () => { $('#lesson-dialog').close(); openTimer(); $('#timer-toggle').focus(); });
+$('#lesson-timer').addEventListener('click', () => {
+  $('.notes-panel').append($('#timer-widget'));
+  $('#timer-widget').classList.add('embedded');
+  $('#timer-widget').hidden = false;
+  $('#timer-toggle').focus();
+});
 $('#timer-close').addEventListener('click', () => { $('#timer-widget').hidden = true; });
 $('#timer-toggle').addEventListener('click', () => {
   if (deadline !== null) { remaining = Math.max(0,Math.ceil((deadline-Date.now())/1000)); deadline = null; }

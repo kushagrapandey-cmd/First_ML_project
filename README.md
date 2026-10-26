@@ -39,7 +39,7 @@ Node is only needed for the optional syntax check, not to serve the app. Standal
 4. Click **Watch lesson**, then **Load YouTube player**. The second click intentionally connects to YouTube; playback does not auto-start. If playback is unavailable, use **Open on YouTube**.
 5. Write notes in the focus space. They save on this device after each change. **Mark complete** is self-reported progress, not video-watch telemetry.
 6. Use **+** to save a lesson. Open **My workspace** to revisit it. Removing a save does not delete its notes.
-7. Start a focus timer from the sidebar or lesson dialog. The lesson timer button closes the dialog and opens the timer. Pausing preserves the remaining time; changing session length resets it. Hiding the timer does not stop it. Reloading the page resets the timer.
+7. Start a focus timer from the sidebar or lesson dialog. The lesson timer opens alongside your notes without stopping playback. Closing the lesson keeps the timer running in the corner. Pausing preserves the remaining time; changing session length resets it. Hiding the timer does not stop it. Reloading the page resets the timer.
 8. Export notes from **My workspace** to keep a Markdown backup. Clearing browser storage deletes local workspace data.
 
 On mobile, use the navigation below the logo and the appearance button in the top bar.
