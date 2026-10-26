@@ -1,3 +1,5 @@
+> Updated behaviour (27 October 2026): sign-in is required for all new study activity. Legacy guest imports remain available. Search/navigation are restored from the URL. Live queries/cache keys include the actual goal; explicit Live mode fails clearly when unconfigured. The browser auth SDK has been replaced with a small same-origin HTTP adapter. See README.md for the current contract.
+
 # YTGuide system design
 
 ## Problem and scope
@@ -95,7 +97,7 @@ Migrations are additive and run during the build with an advisory transaction lo
 
 | Failure | Behavior |
 | --- | --- |
-| YouTube key absent/quota failure | Explicit catalogue fallback |
+| YouTube key absent/quota failure | Automatic: labelled catalogue fallback; explicit Live: actionable error |
 | Invalid filters/body/resource IDs | 400/413/415 rather than an unsafe query |
 | Workspace request without a valid identity | 401 |
 | Attempt to modify another user's collection | 404; other user's data unchanged |

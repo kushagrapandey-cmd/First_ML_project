@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse, urlencode
 from urllib.request import urlopen
 
 TOPICS = {
+    'custom': {'name': 'Other topic', 'query': '', 'hint': 'Enter the topic you want to learn'},
     'python': {'name': 'Python', 'query': 'Python programming tutorial', 'hint': 'Variables, functions, and your first projects'},
     'web': {'name': 'Web development', 'query': 'HTML CSS JavaScript web development tutorial', 'hint': 'Build responsive websites from the ground up'},
     'java': {'name': 'Java', 'query': 'Java programming tutorial', 'hint': 'Learn the language and object-oriented thinking'},
@@ -22,7 +23,7 @@ TOPICS = {
     'dsa': {'name': 'Data structures', 'query': 'data structures algorithms tutorial', 'hint': 'Learn to reason about efficient programs'},
 }
 CATALOG = json.loads(Path(__file__).with_name('catalog.json').read_text())
-STOP = set('a an the and or for to in of on with is are how what learn tutorial full course beginners beginner video'.split())
+STOP = set('i want me please about understand learning basics introduction a an the and or for to in of on with is are how what learn tutorial full course beginners beginner video'.split())
 CACHE = {}
 LOCK = threading.Lock()
 
@@ -75,9 +76,10 @@ def seconds(iso):
     return sum(int(v or 0)*n for v, n in zip(m.groups(), (3600, 60, 1))) if m else None
 
 
-def live_candidates(topic, language, key):
-    # Finite cache keys: user goal text never creates another YouTube search.
-    cache_key = (topic, language)
+def live_candidates(topic, language, key, goal=''):
+    # The specific question must participate in retrieval, not only reranking.
+    goal = ' '.join(goal.lower().split())
+    cache_key = (topic, language, goal)
     with LOCK:
         cached = CACHE.get(cache_key)
         if cached and time.time() - cached[0] < 900:
@@ -85,7 +87,9 @@ def live_candidates(topic, language, key):
                 raise RuntimeError('Provider temporarily unavailable')
             return cached[1]
         try:
-            query = TOPICS[topic]['query'] + (' in Hindi' if language == 'hi' else '')
+            if len(CACHE) >= 128:
+                CACHE.pop(next(iter(CACHE)))
+            query = ((('' if topic == 'custom' else TOPICS[topic]['name'] + ' ') + goal + ' tutorial') if goal else TOPICS[topic]['query']) + (' in Hindi' if language == 'hi' else '')
             params = dict(part='snippet', q=query, type='video', maxResults=25,
                           videoEmbeddable='true', videoSyndicated='true', safeSearch='strict', order='relevance')
             if language != 'any':
@@ -128,28 +132,43 @@ def recommend(params):
     length = params.get('length', 'any')
     if topic not in TOPICS or language not in ('any', 'en', 'hi') or source not in ('auto','catalogue','live') or length not in ('any','short','long') or len(goal) > 120:
         raise ValueError('Choose valid filters and a goal of at most 120 characters.')
+    if topic == 'custom' and not tokens(goal):
+        raise ValueError('Enter what you want to learn in the goal field.')
     key = os.environ.get('YOUTUBE_API_KEY', '')
     rows = []
     mode = 'catalogue'
     notice = 'Catalogue mode: maintained candidates, not a live YouTube search. Availability can change.'
     if source != 'catalogue' and key:
         try:
-            rows = live_candidates(topic, language, key)
+            rows = live_candidates(topic, language, key, goal)
             mode = 'youtube'
             notice = 'Live YouTube candidates, cached for up to 15 minutes. Ranking estimates relevance, not teaching quality.'
         except Exception:
+            if source == 'live':
+                raise SearchUnavailable('Live YouTube search is unavailable or its quota is exhausted. Please retry later or choose Study catalogue.') from None
             logging.warning('youtube_provider_unavailable: using catalogue')
             notice = 'YouTube is temporarily unavailable or its quota is exhausted. Showing catalogue candidates instead.'
     elif source == 'live':
-        notice = 'Live search is not configured. Showing catalogue candidates instead.'
+        raise SearchUnavailable('Live YouTube search is not configured. The site owner must add YOUTUBE_API_KEY. Choose Study catalogue for the limited collection.')
     if mode == 'catalogue':
-        rows = [r for r in CATALOG if r['topic'] == topic and (language == 'any' or r['language'] == language)]
+        rows = [r for r in CATALOG if (topic == 'custom' or r['topic'] == topic) and (language == 'any' or r['language'] == language)]
     if length != 'any':
         rows = [r for r in rows if r.get('duration') is not None and ((r['duration'] <= 1800) if length == 'short' else (r['duration'] > 1800))]
-    query = TOPICS[topic]['query'] + ' ' + goal
+    if goal:
+        goal_terms = set(tokens(goal))
+        if goal_terms:
+            # A generic subject match cannot stand in for a specific learning goal.
+            rows = [r for r in rows if len(goal_terms & set(tokens(' '.join([r['title'], r.get('tags',''), r.get('description','')])))) / len(goal_terms) >= (1 if mode == 'catalogue' else 0.5)]
+        if mode == 'catalogue':
+            notice += ' Results are limited to catalogue entries matching your goal; this is not a search of all YouTube.'
+    query = goal if goal else TOPICS[topic]['query']
     ranked = rank(rows, query)
     return dict(videos=ranked, topic=topic, source=mode, notice=notice, candidates=len(rows),
                 algorithm='TF-IDF cosine similarity + channel diversity', liveConfigured=bool(key))
+
+
+class SearchUnavailable(Exception):
+    pass
 
 
 class handler(BaseHTTPRequestHandler):
@@ -163,6 +182,8 @@ class handler(BaseHTTPRequestHandler):
         try:
             result = recommend(params)
             self.respond(200, result)
+        except SearchUnavailable as error:
+            self.respond(503, {'error': str(error)})
         except ValueError as error:
             self.respond(400, {'error': str(error)})
         except Exception:

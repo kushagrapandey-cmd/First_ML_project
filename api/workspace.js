@@ -131,7 +131,7 @@ async function importGuest(user,body) {
 export default async function handler(req,res) {
   try {
     const url=new URL(req.url,'https://'+req.headers.host);
-    if(req.method==='GET'&&url.searchParams.get('action')==='config')return respond(res,200,{accountsConfigured:!!process.env.NEON_AUTH_BASE_URL&&!!process.env.DATABASE_URL,authPath:'/api/auth',guestMode:true});
+    if(req.method==='GET'&&url.searchParams.get('action')==='config')return respond(res,200,{accountsConfigured:!!process.env.NEON_AUTH_BASE_URL&&!!process.env.DATABASE_URL,authPath:'/api/auth',guestMode:false});
     if(!['GET','POST'].includes(req.method))return respond(res,405,{error:'Use GET or POST.'});
     assertOrigin(req);
     const user=await authenticate(req);

@@ -1,3 +1,5 @@
+> Updated behaviour (27 October 2026): sign-in is required for all new study activity. Legacy guest imports remain available. Search/navigation are restored from the URL. Live queries/cache keys include the actual goal; explicit Live mode fails clearly when unconfigured. The browser auth SDK has been replaced with a small same-origin HTTP adapter. See README.md for the current contract.
+
 # Presenting YTGuide in an interview
 
 ## What to say about the project
@@ -14,7 +16,7 @@ Before claiming ownership of a design decision, read the actual implementation, 
 
 ## A five-to-seven-minute demo
 
-1. Choose Python, show the source notice, add a goal and open **Why this lesson?** Explain why text similarity is not a quality probability.
+1. Sign in, choose Python, show the source notice, add a goal and open **Why this lesson?** Explain why text similarity is not a quality probability.
 2. Open a lesson, add a note, create a bookmark at `12:35`, and manually mark the lesson complete.
 3. Create “Interview revision,” attach the lesson, and filter that collection.
 4. Start/pause/reset the timer; show that it can sit alongside the player.

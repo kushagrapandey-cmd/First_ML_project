@@ -1,11 +1,12 @@
 import os
 import unittest
 from unittest.mock import patch
-from api.recommend import rank, recommend, CATALOG, TOPICS, seconds, live_candidates, CACHE
+from api.recommend import rank, recommend, CATALOG, TOPICS, seconds, live_candidates, CACHE, SearchUnavailable
 
 class RetrievalTests(unittest.TestCase):
     def test_every_topic_has_a_unique_shortlist(self):
         for topic in TOPICS:
+            if topic == 'custom': continue
             result = recommend({'topic':topic,'source':'catalogue'})
             self.assertEqual(len(result['videos']),5,topic)
             self.assertEqual(len({v['id'] for v in result['videos']}),5)
@@ -32,11 +33,10 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(rank(rows,'classes')[0]['id'],'BBBBBBBBBBB')
     def test_cosine_bounded(self):
         self.assertTrue(all(0<=v['similarity']<=1 for v in rank(CATALOG,'python programming')))
-    def test_missing_key_falls_back_explicitly(self):
+    def test_missing_live_key_reports_error(self):
         with patch.dict(os.environ,{},clear=True):
-            r=recommend({'source':'live'})
-            self.assertEqual(r['source'],'catalogue')
-            self.assertIn('not configured',r['notice'])
+            with self.assertRaisesRegex(SearchUnavailable,'not configured'):
+                recommend({'source':'live'})
     def test_provider_failure_falls_back_explicitly(self):
         with patch.dict(os.environ,{'YOUTUBE_API_KEY':'test'}),patch('api.recommend.live_candidates',side_effect=TimeoutError):
             r=recommend({})
@@ -74,5 +74,29 @@ class RetrievalTests(unittest.TestCase):
                 with self.assertRaises(Exception):live_candidates('python','any','test')
             self.assertEqual(get.call_count,1)
         CACHE.clear()
+
+class GoalRegressionTests(unittest.TestCase):
+    def test_unsupported_goal_never_repeats_generic_courses(self):
+        result = recommend({'topic':'python','goal':'Kubernetes networking','source':'catalogue'})
+        self.assertEqual(result['videos'], [])
+    def test_specific_goal_filters_before_ranking(self):
+        rows=[dict(id='AAAAAAAAAAA',title='Python decorators',topic='python',language='en',channel='A'),dict(id='BBBBBBBBBBB',title='Python loops',topic='python',language='en',channel='B')]
+        with patch('api.recommend.CATALOG',rows):
+            self.assertEqual([v['id'] for v in recommend({'topic':'python','goal':'decorators','source':'catalogue'})['videos']],['AAAAAAAAAAA'])
+    def test_live_search_query_and_cache_include_goal(self):
+        CACHE.clear()
+        with patch('api.recommend.youtube_get',return_value={'items':[]}) as get:
+            live_candidates('python','any','test','decorators')
+            live_candidates('python','any','test','loops')
+            live_candidates('python','any','test','decorators')
+            self.assertEqual(get.call_count,2)
+            self.assertIn('decorators',get.call_args_list[0].args[1]['q'])
+            self.assertIn('loops',get.call_args_list[1].args[1]['q'])
+        CACHE.clear()
+    def test_custom_topic_requires_question(self):
+        with self.assertRaises(ValueError): recommend({'topic':'custom'})
+    def test_explicit_live_failure_does_not_silently_change_source(self):
+        with patch.dict(os.environ,{'YOUTUBE_API_KEY':'test'}),patch('api.recommend.live_candidates',side_effect=TimeoutError):
+            with self.assertRaises(SearchUnavailable):recommend({'source':'live'})
 
 if __name__=='__main__':unittest.main()

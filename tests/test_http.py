@@ -31,7 +31,7 @@ class HTTPTests(unittest.TestCase):
     def test_metadata(self):
         r,data=self.request('/api/recommend?action=meta')
         self.assertEqual(r.status,200)
-        self.assertEqual(len(json.loads(data)['topics']),7)
+        self.assertEqual(len(json.loads(data)['topics']),8)
     def test_bad_request(self):
         r,data=self.request('/api/recommend?topic=invalid')
         self.assertEqual(r.status,400)

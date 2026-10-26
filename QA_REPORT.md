@@ -1,54 +1,64 @@
-# YTGuide verification — 26 October 2026
+# YTGuide repair verification — 27 October 2026
 
-## Release scope
+## Release state
 
-Accounts, PostgreSQL cloud persistence, guest imports, collections, timestamp bookmarks and resume position were added to the existing recommendation/study workspace. No chatbot is included. Live YouTube search still needs a new owner-provided API key; catalogue mode remains clearly labelled.
+**Direct Vercel production deployment is READY:** `dpl_AoZi1GT1SExCaqBYrLUghBBvNFuA`, serving `https://ytguide-five.vercel.app/`, source through local commit `814a8d6`. The owner has now explicitly authorized publication to both GitHub and Vercel; source synchronization is in progress.
 
-## Automated evidence
+**Live search passes; the trusted-origin blocker is corrected.** Neon production branch `br-patient-smoke-b3nu96v6` initially had an empty domain allowlist. Added the exact production origin and verified it by reading the allowlist back. A subsequent secure owner-provided sign-in attempt returned **Invalid email or password**. No successful authenticated cloud-persistence flow is claimed.
 
-- **23 Python tests passed:** ranking/query sensitivity, topic coverage, deduplication, malformed/invalid input, strict language/duration filtering, empty results, provider fallback/cache behavior, and actual local HTTP boundaries.
-- **9 Node boundary tests passed:** video/UUID validation, body limits, hostile-origin rejection, direct unauthenticated workspace rejection, public config safety, auth admin-route rejection and method restrictions.
-- JavaScript syntax checks and the browser auth bundle build passed.
-- Actual preview database migration succeeded on the provisioned Neon database.
-- Preview build `1bbdecb` completed with `CLOUD_QA_PASS`: real managed signup/session/JWT, workspace CRUD, two-user isolation, stale-note 409, persisted timestamp progress, idempotent import, logout and forged-token rejection.
-- Follow-up preview checks exercise the same-origin auth proxy and cookie rewriting as well as the underlying provider. Inspect the latest deployment's `CLOUD_QA_PASS` build record for the final result.
-- Fixture tests run only on preview deployments. Credentials/tokens/cookies are generated in memory and are never printed. Application fixture rows are removed afterwards; managed fixture accounts belong only to the preview branch.
+## Live checks performed after deployment
 
-## Browser evidence
+- `/api/recommend?action=meta`: HTTP 200, `liveConfigured: true`.
+- `/api/workspace?action=config`: HTTP 200, accounts configured, `guestMode: false`.
+- Anonymous `/api/workspace`: HTTP 401.
+- Python decorators: five topic-specific live results from 22 matching candidates, confirmed in the browser.
+- SQL joins: five distinct live results from 19 matching candidates, confirmed through the form and API.
+- Other topic / Kubernetes networking: five live results from 25 matching candidates via the real key.
+- Signed-out Save opens sign-in; workspace stays at zero saved lessons.
+- Reload preserves SQL / joins / Live YouTube and the current workspace page. It does not reset to Python.
+- Lesson dialog opens, guest notes remain disabled, a YouTube iframe loads, About navigation and the focus timer work. Iframe creation does not prove uninterrupted media playback in every region.
+- Actual secure sign-in after the domain fix: **Invalid email or password**. The provider now accepts the site origin. The submitted credentials did not establish a session.
+- Runtime error/warning scan returned Node `url.parse()` deprecation warnings from the platform runtime. No application exception appeared in the returned records. This is a limited log-window observation, not a proof of zero future failures.
+- Re-ran all 44 automated checks and syntax checks after deployment; passed.
 
-| Flow | Evidence/status |
+## Reproduced / established baseline
+
+- Opened `https://ytguide-five.vercel.app/` in the cloud browser. Observed the Python default, five catalogue courses, guest workspace labels and active save controls.
+- The live sign-in dialog renders. Successful account login was not tested with a real owner's account.
+- Source inspection confirmed guest activity writes and loading from local storage; all refreshes called an unconditional default Python search.
+- Source inspection confirmed the live YouTube request/cache ignored the entered goal. The goal only affected reranking a fixed subject pool.
+- Vercel environment metadata contains database/auth variables and no `YOUTUBE_API_KEY`. No secret values were retrieved.
+
+## Implemented repair
+
+| Problem | Change |
 | --- | --- |
-| Discover renders five lessons | Verified on deployed preview and previous production |
-| Save, note, manual completion, reload persistence | Verified on the preceding release |
-| Guest collection creation | Verified in the account-enabled preview |
-| Timestamped bookmark | `12:35 · Functions recap` rendered after creation |
-| Collection membership | Lesson showed `Interview revision` and remove control |
-| Focus timer start/pause/reset | Verified on the preceding release |
-| Timer beside notes and continuing after close | Verified on the preceding release |
-| Markdown export | Browser download event verified on preceding production |
-| Dark appearance | Verified, including computed dark body background |
-| Linux + Hindi catalogue filter | Verified explicit empty result |
-| YouTube iframe loading | Verified on preceding release |
-| Actual video media advances with sound | Not confirmed: cloud browser buffered at the start |
-| Resume integration | IFrame API integration implemented; real playback/device verification remains separate |
-| Full account UI with a real owner mailbox | Requires the owner's own signup/verification; provider/API fixture checks passed |
-| Mobile physical-device interaction | Not claimed as fully tested |
+| Login rejects existing short passwords before request | Sign-in accepts existing nonempty passwords; new password forms require at least eight characters, with provider validation still authoritative |
+| Stale/unclear sign-in session result | Small same-origin HTTP adapter; uncached server session lookup; actionable provider/network errors; a missing session no longer falsely claims account creation |
+| Initial connection failure leaves Sign in unusable | Sign-in retries account initialization |
+| Anonymous saves/notes/bookmarks/completion/progress | Activity gates; no new guest activity storage; account controls unlock only after cloud workspace loads |
+| Same generic courses for specific goals | Goal included in YouTube query/cache and candidate filtering; catalogue requires all meaningful goal terms |
+| Unsupported arbitrary topics | Other topic option; honest empty/error response and direct YouTube search |
+| Refresh resets Python/page | Search state/current view restored from URL; filter changes start fresh requests |
+| Sign-out leaves visible account state | Cache cleanup and controls relock; session checked on focus for an existing account |
 
-The provider's shared email-code service is suitable for this demonstration, but actual inbox delivery/recovery needs a mailbox controlled by the owner. Provider production guidance recommends custom SMTP before a wider launch.
+Legacy guest originals are retained for explicit import; personal activity is not silently uploaded. Signed-in data uses the existing PostgreSQL API, with account-scoped device drafts/outbox for retry. Keeping such a cache does not replace database persistence.
 
-## Security and release evidence
+## Current automated evidence
 
-- Server-only Neon database configuration is provisioned by the integration.
-- Account API validates signed JWTs and uses their subject for all ownership checks. User-controlled `user_id` is not used as authority.
-- Real two-user fixture checks confirm a user cannot add to/rename another user's collection, read its note, or delete it through their own scope.
-- Note writes carry an expected version; conflicts preserve the server note and return 409.
-- Imported guest notes do not overwrite existing cloud notes; repeat batches return an existing import receipt.
-- Auth proxy route allowlist excludes admin operations and arbitrary upstream URLs.
-- CSP, referrer policy, nosniff and frame protection are configured.
-- A patched Zod override was added after dependency audit reported an oversized-collection advisory. Inspect the latest audit output rather than treating an old result as current.
-- No paid plan, chatbot service, external SMTP purchase or video download was enabled.
-- Default Vercel protection remains enabled. The production domain was publicly reachable without disabling it.
+- **28 Python tests:** ranking, deduplication, query sensitivity, all preset subjects, strict filters, goal-specific search/cache keys, unsupported-goal empty results, explicit-live errors and HTTP boundaries.
+- **16 Node/DOM tests:** validation, API authorization, hostile origins, public-config redaction, provider route allowlist, guest activity blocking, no guest activity writes, URL restoration, automatic filter search, account-scoped state, bookmark timestamps, same-origin auth requests, provider errors/timeouts, successful sign-in/save/sign-out orchestration against mocked services, and initialization retry.
+- Syntax checks, production browser-bundle build and `git diff --check` pass.
+- The auth browser bundle no longer imports the large managed-auth SDK/UI dependency tree. Provider-managed identity remains unchanged.
 
-## Limits
+DOM account tests use mocked services. They validate frontend behaviour, not real provider/database availability.
 
-These tests establish specific correctness properties, not zero bugs, production-scale reliability, recommendation superiority or improved learning outcomes. Authentication fixture tests are stronger than mocks but do not replace an owner-mailbox/browser/device check. No real-key live YouTube success is claimed until the key is configured and tested.
+## Remaining work
+
+1. Successful login with a valid registered account, followed by cloud-backed note/save/bookmark/collection tests, reload, separate-session persistence, logout and account isolation. The secure owner login returned Invalid email or password. Passwords/codes must never be pasted into chat. No additional attempt was made after that credential rejection.
+2. Publish the authorized repair to GitHub main and verify the corresponding Vercel deployment; do not leave source and production divergent.
+3. Preview-only cloud fixture tests were not run for this repair. No production fixture account was created as a workaround.
+
+Neon production domain configuration is fixed. The attached `ytguide-db` resource reports Free (`free_v3`), no credit card required. No plan upgrade, AI subscription or wildcard-domain access was enabled.
+
+Provider domain setup reference: https://neon.com/docs/auth/guides/configure-domains .

@@ -2,6 +2,19 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 let storageScope = 'guest';
+let authenticated = false;
+const personalKey = key => key !== 'ytguide.theme';
+function requireAccount(){
+  if(authenticated)return true;
+  toast('Sign in to save lessons, notes, bookmarks and progress.');
+  window.dispatchEvent(new Event('ytguide:signin'));
+  return false;
+}
+function updateAccountControls(){
+  for(const selector of ['#lesson-notes','#bookmark-label','#bookmark-time','#lesson-collection'])$(selector).disabled=!authenticated;
+  $('#note-status').textContent=authenticated?'Notes sync to your account.':'Sign in to take notes and save your progress.';
+  $('#lesson-auth-prompt').hidden=authenticated;
+}
 const storageKey = key => storageScope === 'guest' || key === 'ytguide.theme' ? key : `${storageScope}:${key}`;
 const ID = /^[a-zA-Z0-9_-]{11}$/;
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,9 +26,11 @@ function toast(message) {
   toastTimeout = setTimeout(() => { $('#toast').hidden = true; }, 3500);
 }
 function read(key, fallback) {
+  if(storageScope==='guest'&&personalKey(key))return fallback;
   try { return JSON.parse(localStorage.getItem(storageKey(key))) ?? fallback; } catch { return fallback; }
 }
 function write(key, value) {
+  if(storageScope==='guest'&&personalKey(key))return false;
   try { localStorage.setItem(storageKey(key), JSON.stringify(value)); return true; }
   catch { toast('Device storage is unavailable or full. Export your notes to keep them.'); return false; }
 }
@@ -57,8 +72,8 @@ let playerApiPromise;
 let lastPositionSaved = 0;
 let noteDebounce;
 let noteDirty=false;
-function emitMutation(action,payload) { window.dispatchEvent(new CustomEvent('ytguide:mutation',{detail:{action,...payload}})); }
-function remember(video) {if(validVideo(video)){lessonIndex[video.id]=video;write('ytguide.lessons.v3',lessonIndex);}}
+function emitMutation(action,payload) { if(!authenticated)return; window.dispatchEvent(new CustomEvent('ytguide:mutation',{detail:{action,...payload}})); }
+function remember(video) {if(authenticated&&validVideo(video)){lessonIndex[video.id]=video;write('ytguide.lessons.v3',lessonIndex);}}
 const stamp = seconds => `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 function persistExtras() {
   write('ytguide.positions.v3',positions);write('ytguide.bookmarks.v3',bookmarks);
@@ -82,10 +97,12 @@ function updateWorkspace() {
   $('#stat-saved').textContent = saved.length;
   $('#stat-complete').textContent = completed.length;
   $('#stat-notes').textContent = Object.values(notes).filter(n => n.trim()).length;
-  if (currentView === 'workspace') {
+  if (currentView === 'workspace' && !authenticated) {
+    $('#workspace-results').innerHTML='<div class="empty-state"><h3>Your workspace needs an account.</h3><p>Sign in to keep lessons, notes, bookmarks and progress across devices. Browsing and watching are free without an account.</p><button class="primary" data-signin>Sign in / create account</button></div>';
+  } else if (currentView === 'workspace') {
     const filter=$('#workspace-filter').value;
     const source=filter==='saved'?saved:Object.values(lessonIndex).filter(validVideo).filter(v=>filter==='recent'||(filter==='completed'&&completed.includes(v.id))||(filter==='notes'&&notes[v.id]?.trim())||(filter.startsWith('collection:')&&(memberships[v.id]||[]).includes(filter.slice(11))));
-    $('#workspace-results').innerHTML = source.length ? source.map((v, i) => card(v, i, true)).join('') : '<div class="empty-state"><h3>Your next chapter starts with a save.</h3><p>Tap + on a lesson to keep it here. Your notes and progress stay on this device.</p><button class="primary" data-view="discover">Discover lessons ↗</button></div>';
+    $('#workspace-results').innerHTML = source.length ? source.map((v, i) => card(v, i, true)).join('') : '<div class="empty-state"><h3>Your next chapter starts with a save.</h3><p>Tap + on a lesson to keep it here. Your notes and progress sync to your account.</p><button class="primary" data-view="discover">Discover lessons ↗</button></div>';
   }
   $$('[data-save]').forEach(button => {
     const v = [...videos, ...saved].find(v => v.id === button.dataset.save);
@@ -97,8 +114,15 @@ function updateWorkspace() {
   renderCollections();
   if (currentVideo) $('#save-lesson').textContent = isSaved(currentVideo.id) ? 'Remove from saved −' : 'Save lesson +';
 }
+document.addEventListener('click',event=>{
+  const button=event.target.closest('button');
+  if(!button)return;
+  if(button.matches('[data-signin]')){event.preventDefault();window.dispatchEvent(new Event('ytguide:signin'));return;}
+  if(button.matches('[data-save],#save-lesson,#mark-complete,#add-bookmark,#add-to-collection,#export-notes,#export-backup,[data-delete-collection],[data-rename-collection],[data-remove-membership],[data-remove-bookmark]')&&!authenticated){event.preventDefault();event.stopImmediatePropagation();requireAccount();}
+},true);
+document.addEventListener('submit',event=>{if(event.target.id==='collection-form'&&!authenticated){event.preventDefault();event.stopImmediatePropagation();requireAccount();}},true);
 function toggleSave(video) {
-  if (!video) return;
+  if (!video || !requireAccount()) return;
   remember(video);
   const before = isSaved(video.id);
   if (!before && saved.length >= 300) { toast('Your workspace holds 300 lessons. Remove one to make room.'); return; }
@@ -111,6 +135,7 @@ function toggleSave(video) {
 function showView(view, moveFocus = true) {
   if (!['discover','workspace','about'].includes(view)) return;
   currentView = view;
+  persistNavigation();
   ['discover','workspace','about'].forEach(name => { $(`#${name}-view`).hidden = name !== view; });
   $$('.nav-item').forEach(button => {
     const active = button.dataset.view === view;
@@ -123,6 +148,7 @@ function showView(view, moveFocus = true) {
 }
 async function findLessons(event) {
   event?.preventDefault();
+  persistNavigation();
   request?.abort();
   request = new AbortController();
   const ownGeneration = ++generation;
@@ -141,11 +167,11 @@ async function findLessons(event) {
     videos = result.videos.filter(validVideo);
     $('#result-meta').textContent = `${videos.length} lessons · ${result.candidates} candidates`;
     $('#source-notice').textContent = result.notice;
-    $('#results').innerHTML = videos.length ? videos.map((v, i) => card(v, i)).join('') : '<div class="empty-state"><h3>No lessons match these filters.</h3><p>Try any language or any length. We prefer an honest empty result to an unrelated lesson.</p><button class="secondary" id="clear-filters">Reset filters</button></div>';
+    $('#results').innerHTML = videos.length ? videos.map((v, i) => card(v, i)).join('') : '<div class="empty-state"><h3>No matching lessons in this source.</h3><p>Try Live YouTube, broaden your goal, or search YouTube directly. The study catalogue has limited coverage.</p><a class="secondary" href="${escapeHtml(youtubeSearchURL())}" target="_blank" rel="noopener noreferrer">Search this topic on YouTube ↗</a><button class="secondary" id="clear-filters">Reset filters</button></div>';
   } catch (error) {
     if (ownGeneration !== generation) return;
     $('#result-meta').textContent = '';
-    $('#results').innerHTML = `<div class="empty-state"><h3>Let’s try that again.</h3><p>${escapeHtml(error.name === 'AbortError' ? 'The search took too long. Please retry.' : error.message)}</p><button class="primary" id="retry-search">Retry search ↗</button></div>`;
+    $('#results').innerHTML = `<div class="empty-state"><h3>Let’s try that again.</h3><p>${escapeHtml(error.name === 'AbortError' ? 'The search took too long. Please retry.' : error.message)}</p><a class="secondary" href="${escapeHtml(youtubeSearchURL())}" target="_blank" rel="noopener noreferrer">Search this topic on YouTube ↗</a><button class="primary" id="retry-search">Retry search ↗</button></div>`;
   } finally {
     clearTimeout(timeout);
     if (ownGeneration === generation) {
@@ -165,7 +191,7 @@ function openLesson(video) {
   $('#lesson-channel').textContent = video.channel;
   $('#youtube-link').href = `https://www.youtube.com/watch?v=${video.id}`;
   $('#lesson-notes').value = notes[video.id] || '';
-  $('#note-status').textContent = storageScope === 'guest' ? 'Notes save on this device.' : 'Notes save locally, then sync to your account.';
+  updateAccountControls();
   renderNoteConflict();
   renderBookmarks();
   $('#playback-position').textContent = positions[video.id] ? `Resume from ${stamp(positions[video.id])}. Completion is marked manually.` : 'Playback starts when you choose.';
@@ -187,7 +213,7 @@ $('#lesson-dialog').addEventListener('close', () => {
 });
 $('#close-lesson').addEventListener('click', () => $('#lesson-dialog').close());
 $('#lesson-notes').addEventListener('input', () => {
-  if (!currentVideo) return;
+  if (!currentVideo || !authenticated) return;
   if (!Object.hasOwn(notes,currentVideo.id) && Object.keys(notes).length >= 300) {
     $('#note-status').textContent = 'Notes limit reached. Export your existing notes first.'; return;
   }
@@ -202,7 +228,7 @@ $('#lesson-notes').addEventListener('input', () => {
 });
 $('#save-lesson').addEventListener('click', () => toggleSave(currentVideo));
 $('#mark-complete').addEventListener('click', () => {
-  if (!currentVideo) return;
+  if (!currentVideo || !requireAccount()) return;
   const id = currentVideo.id;
   completed = completed.includes(id) ? completed.filter(v => v !== id) : [...completed, id];
   write('ytguide.completed.v2', completed);
@@ -285,6 +311,8 @@ setTheme(read('ytguide.theme','light') === 'dark' ? 'dark' : 'light');
 }));
 window.YTGuide = {
   toast, read, write, validVideo,
+  setAuthenticated(value){authenticated=!!value;updateAccountControls();updateWorkspace();},
+  get authenticated(){return authenticated;},
   get scope(){return storageScope;},
   get video(){return currentVideo;},
   get state(){return {saved,completed,notes,lessonIndex,positions,bookmarks,collections,memberships};},
@@ -295,6 +323,7 @@ window.YTGuide = {
     clearTimeout(noteDebounce);
     if($('#lesson-dialog').open)$('#lesson-dialog').close();
     storageScope=scope;
+    authenticated=false;
     saved=read('ytguide.saved.v2',[]);completed=read('ytguide.completed.v2',[]);notes=read('ytguide.notes.v2',{});
     lessonIndex=read('ytguide.lessons.v3',{});positions=read('ytguide.positions.v3',{});bookmarks=read('ytguide.bookmarks.v3',{});collections=read('ytguide.collections.v3',[]);memberships=read('ytguide.memberships.v3',{});
     noteVersions={};noteConflicts={};normalizeWorkspace();
@@ -319,7 +348,9 @@ window.YTGuide = {
   },
   flushNote(){if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}},
 };
-updateWorkspace();
+restoreNavigation();
+updateAccountControls();
+showView(currentView,false);
 findLessons();
 window.dispatchEvent(new Event('ytguide:ready'));
 
@@ -410,7 +441,7 @@ async function loadPlayer(at){
   }catch(error){$('#player').innerHTML=`<div class="player-placeholder"><p>${escapeHtml(error.message)}</p><button class="primary" id="load-player">Retry player</button></div>`;}
 }
 function savePosition(force=false){
-  if(!currentVideo||!playerReady||!playerInstance?.getCurrentTime)return;
+  if(!authenticated||!currentVideo||!playerReady||!playerInstance?.getCurrentTime)return;
   if(![0,1,2].includes(playerInstance.getPlayerState()))return;
   const position=Math.max(0,Math.floor(playerInstance.getCurrentTime()));
   if(!Number.isFinite(position)||position>604800)return;
@@ -442,3 +473,23 @@ $('#export-backup').addEventListener('click',()=>{
   const url=URL.createObjectURL(new Blob([JSON.stringify(body,null,2)],{type:'application/json'}));
   const a=document.createElement('a');a.href=url;a.download='YTGuide-workspace.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
+
+function persistNavigation(){
+  const params=new URLSearchParams(new FormData($('#search-form')));
+  history.replaceState(null,'',location.pathname+'?'+params.toString()+'#'+currentView);
+}
+function restoreNavigation(){
+  const params=new URLSearchParams(location.search);
+  for(const name of ['topic','language','source','length']){
+    const field=$('#'+name),value=params.get(name);
+    if(value&&[...field.options].some(o=>o.value===value))field.value=value;
+  }
+  $('#goal').value=(params.get('goal')||'').slice(0,120);
+  const view=location.hash.slice(1);
+  currentView=['discover','workspace','about'].includes(view)?view:'discover';
+}
+for(const name of ['topic','language','source','length'])$('#'+name).addEventListener('change',()=>findLessons());
+$('#goal').addEventListener('input',persistNavigation);
+window.addEventListener('popstate',()=>{restoreNavigation();showView(currentView,false);findLessons();});
+
+function youtubeSearchURL(){const topic=$('#topic');return 'https://www.youtube.com/results?'+new URLSearchParams({search_query:(topic.value==='custom'?'':topic.selectedOptions[0].textContent+' ')+$('#goal').value+' tutorial'+($('#language').value==='hi'?' in Hindi':'')});}

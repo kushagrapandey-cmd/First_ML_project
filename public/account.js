@@ -10,13 +10,13 @@
   const saveQueue=()=>api.write(pendingKey,queue);
   function status(){
     const cloud=!!user;
-    $('#storage-label').textContent=cloud?'Account workspace · cloud sync':'Guest workspace · this device';
+    $('#storage-label').textContent=cloud?'Account workspace · cloud sync':'Browse freely · sign in to save';
     $('#account-button').textContent=cloud&&!sessionExpired?`${user.name || 'Account'} · sync`:'Sign in / sync';
-    $('#sync-status').textContent=!cloud?'Guest mode · stored on this device':sessionExpired?'Session expired · sign in to resume sync':lastError||queue.length?`${queue.length} pending change${queue.length===1?'':'s'}${lastError?' · '+lastError:''}`:'Cloud synced ✓';
+    $('#sync-status').textContent=!cloud?'Sign in to save your study activity':sessionExpired?'Session expired · sign in to resume sync':lastError||queue.length?`${queue.length} pending change${queue.length===1?'':'s'}${lastError?' · '+lastError:''}`:'Cloud synced ✓';
     $('#sync-retry').hidden=!cloud||(!queue.length&&!lastError);
     $('#sync-discard').hidden=!cloud||!queue[0]?.rejected;
     $('#cloud-refresh').hidden=!cloud;
-    $('#workspace-help').textContent=cloud?'Your account data syncs across devices. Pending changes remain cached locally until confirmed.':'Guest data stays in this browser. Sign in for cross-device sync. Export a backup to keep your own copy.';
+    $('#workspace-help').textContent=cloud?'Your account data syncs across devices. Pending changes remain cached locally until confirmed.':'Browsing does not save study activity. Sign in to use your personal cloud workspace.';
     $('#guest-import').hidden=!cloud||!hasGuestData();
   }
   function setMode(next){
@@ -26,6 +26,7 @@
     $('#account-copy').textContent=verify?'Enter the verification code sent to your email.':reset?'We’ll send a password-reset code to your email.':'Sign in to sync your lessons, notes, collections and progress.';
     $('#name-field').hidden=!signup;$('#account-name').required=signup;
     $('#password-field').hidden=verify||reset;$('#account-password').required=!verify&&!reset;
+    $('#account-password').minLength=signup||newPassword?8:1;
     $('#account-password').autocomplete=signup||newPassword?'new-password':'current-password';
     $('#otp-field').hidden=!verify&&!newPassword;$('#account-otp').required=verify||newPassword;
     $('#account-submit').textContent={signin:'Sign in',signup:'Create account',verify:'Verify email',reset:'Send reset code',newPassword:'Reset password'}[mode];
@@ -33,12 +34,15 @@
     $('#forgot-password').hidden=mode!=='signin';$('#send-verification').hidden=!verify;
     message('');
   }
-  function openAccount(){
-    if(!accountReady){api.toast('Account service is connecting. Guest mode is ready.');return;}
-    if(user&&!sessionExpired){$('#account-title').textContent='Your learning account.';$('#account-copy').textContent='A workspace that follows you.';$('#account-form').hidden=true;$('#signed-in-panel').hidden=false;$('#account-identity').textContent=user.email||user.name;$('.account-links').hidden=true;}
+  async function openAccount(){
+    if(!accountReady)await initialiseAccount();
+    if(!accountReady){api.toast(lastError||'Account service is connecting. Please try again in a moment.');return;}
+    if($('#lesson-dialog').open)$('#lesson-dialog').close();
+    if(user&&!sessionExpired&&api.authenticated){$('#account-title').textContent='Your learning account.';$('#account-copy').textContent='A workspace that follows you.';$('#account-form').hidden=true;$('#signed-in-panel').hidden=false;$('#account-identity').textContent=user.email||user.name;$('.account-links').hidden=true;}
     else{$('.account-links').hidden=false;setMode('signin');}
     $('#account-dialog').showModal();
   }
+  window.addEventListener('ytguide:signin',openAccount);
   async function token(){
     const result=await client.token();
     if(result.error||!result.data?.token)throw Object.assign(new Error('Sign in again to resume cloud sync.'),{status:401});
@@ -55,10 +59,10 @@
     if(!user||working||queue.length||$('#lesson-dialog').open)return;
     const requestEpoch=epoch,identity=user.id;
     try{const result=await cloud();if(identity===user?.id&&requestEpoch===epoch&&!queue.length){api.applyCloud(result.workspace);lastError='';status();}}
-    catch(error){lastError=error.message;if(error.status===401)sessionExpired=true;status();}
+    catch(error){lastError=error.message;if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}status();}
   }
   async function connect(nextUser){
-    const changed=user?.id!==nextUser.id;user=nextUser;sessionExpired=false;lastError='';generation++;
+    const changed=user?.id!==nextUser.id;user=nextUser;sessionExpired=false;lastError='';generation++;api.setAuthenticated(false);
     if(changed){api.setScope('user:'+user.id);queue=api.read(pendingKey,[]);if(!Array.isArray(queue))queue=[];}
     const identity=user.id;
     const result=await cloud();
@@ -66,7 +70,7 @@
     if(!queue.length)api.applyCloud(result.workspace);
     else for(const n of result.workspace.notes)if(!queue.some(q=>q.action==='note'&&q.video.id===n.video_id))api.setNoteVersion(n.video_id,n.version);
     for(const item of queue.filter(q=>q.blocked)){const latest=result.workspace.notes.find(n=>n.video_id===item.video.id);if(latest)api.conflict(item.video.id,latest);}
-    status();processQueue();
+    api.setAuthenticated(true);status();processQueue();
   }
   function enqueue(body){
     if(!user)return;
@@ -101,7 +105,7 @@
           }else if(error.status===409&&['createCollection','bookmark'].includes(item.action)){
             const result=await cloud();const exists=item.action==='createCollection'?result.workspace.collections.some(c=>c.id===item.id):result.workspace.bookmarks.some(b=>b.id===item.id);
             if(exists){queue.shift();saveQueue();continue;}item.rejected=true;saveQueue();lastError=error.message;
-          }else{lastError=error.message;if([400,404,413,415].includes(error.status)){item.rejected=true;saveQueue();}if(error.status===401)sessionExpired=true;}
+          }else{lastError=error.message;if([400,404,413,415].includes(error.status)){item.rejected=true;saveQueue();}if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}}
           break;
         }
       }
@@ -145,8 +149,9 @@
       const session=await client.getSession();
       if(session.error)throw new Error(session.error.message);
       if(session.data?.user){await connect(session.data.user);$('#account-dialog').close();$('#account-password').value='';$('#account-otp').value='';api.toast('Signed in. Your account workspace is ready.');}
-      else{setMode('verify');message('Your account was created. Verify your email, then sign in.');}
-    }catch(error){message(error.message||'Account service is unavailable.');}
+      else if(mode==='signup'||mode==='verify'){setMode('verify');message('Verify your email, then sign in.');}
+      else throw new Error('Sign-in returned no session. Please retry; cookies must be enabled for this site.');
+    }catch(error){if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}message(error.message||'Account service is unavailable.');}
     finally{$('#account-submit').disabled=false;}
   });
   $('#sign-out').addEventListener('click',async()=>{
@@ -155,9 +160,9 @@
     try{
       const result=await client.signOut();if(result.error)throw new Error(result.error.message);
       const oldScope=api.scope,pending=queue.length;
-      user=null;generation++;queue=[];lastError='';sessionExpired=false;
+      api.setAuthenticated(false);user=null;generation++;queue=[];lastError='';sessionExpired=false;
       if(!pending){try{for(const key of Object.keys(localStorage))if(key.startsWith(oldScope+':'))localStorage.removeItem(key);}catch{}}
-      api.setScope('guest');status();$('#account-dialog').close();api.toast('Signed out. Guest workspace restored.');
+      api.setScope('guest');status();$('#account-dialog').close();api.toast('Signed out. Study activity is locked until you sign in again.');
     }catch(error){api.toast(error.message);}
   });
   $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else{lastError='';processQueue();}});
@@ -167,7 +172,13 @@
   });
   $('#cloud-refresh').addEventListener('click',()=>{if(queue.length)api.toast('Sync pending changes before refreshing.');else if($('#lesson-dialog').open)api.toast('Close the lesson before refreshing.');else refresh();});
   window.addEventListener('online',processQueue);
-  window.addEventListener('focus',()=>{if(queue.length)processQueue();else refresh();});
+  window.addEventListener('focus',async()=>{
+    if(!client||!user)return;
+    const result=await client.getSession();
+    if(!result.error&&!result.data?.user){api.setAuthenticated(false);user=null;generation++;queue=[];api.setScope('guest');status();return;}
+    if(result.data?.user?.id!==user.id){if(result.data?.user)await connect(result.data.user).catch(()=>{api.setAuthenticated(false);});return;}
+    if(queue.length)processQueue();else refresh();
+  });
   setInterval(()=>{if(queue.length&&!queue[0].blocked)processQueue();},15000);
   function guestSnapshot(){
     const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
@@ -195,10 +206,21 @@
     }catch(error){api.toast('Import stopped: '+error.message+'. Guest originals remain on this device.');}
     finally{button.disabled=false;}
   });
-  try{
-    const config=await fetch('/api/workspace?action=config').then(r=>r.json());
-    if(!config.accountsConfigured){$('#account-button').textContent='Guest mode';$('#account-button').disabled=true;status();return;}
-    const sdk=await import('/auth-sdk.js');client=sdk.createClient();accountReady=true;
-    const result=await client.getSession();if(result.data?.user)await connect(result.data.user);status();
-  }catch(error){lastError=error.message;accountReady=!!client;status();console.warn('Account connection unavailable; guest mode remains usable.');}
+  let connecting=false;
+  async function initialiseAccount(){
+    if(connecting)return;
+    connecting=true;
+    try{
+      const response=await fetch('/api/workspace?action=config',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+      if(!response.ok)throw new Error('Account service is unavailable. Tap Sign in to retry.');
+      const config=await response.json();
+      if(!config.accountsConfigured)throw new Error('Account service is not configured. Please contact the site owner.');
+      const sdk=await import('/auth-sdk.js');client=sdk.createClient();accountReady=true;
+      const result=await client.getSession();if(result.error)throw new Error(result.error.message);
+      if(result.data?.user)await connect(result.data.user);
+      lastError='';status();
+    }catch(error){lastError=error.message;if(user)sessionExpired=true;api.setAuthenticated(false);accountReady=!!client;status();console.warn('Account connection unavailable; saving is locked.');}
+    finally{connecting=false;}
+  }
+  await initialiseAccount();
 })();
