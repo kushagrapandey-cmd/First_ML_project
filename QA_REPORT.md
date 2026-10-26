@@ -2,7 +2,7 @@
 
 ## Release state
 
-**Direct Vercel production deployment is READY:** `dpl_AoZi1GT1SExCaqBYrLUghBBvNFuA`, serving `https://ytguide-five.vercel.app/`, source through local commit `814a8d6`. The owner has now explicitly authorized publication to both GitHub and Vercel; source synchronization is in progress.
+**Direct Vercel production deployment is READY:** `dpl_AoZi1GT1SExCaqBYrLUghBBvNFuA`, serving `https://ytguide-five.vercel.app/`, source through local commit `814a8d6`. GitHub main now includes repair commit `b6770f2f3171261ed78645760c793765069a2664`, and Vercel deployment `dpl_EwD5jV97EanwXDVtR5s4qt8xDEwj` is READY from that commit.
 
 **Live search passes; the trusted-origin blocker is corrected.** Neon production branch `br-patient-smoke-b3nu96v6` initially had an empty domain allowlist. Added the exact production origin and verified it by reading the allowlist back. A subsequent secure owner-provided sign-in attempt returned **Invalid email or password**. No successful authenticated cloud-persistence flow is claimed.
 
@@ -56,9 +56,9 @@ DOM account tests use mocked services. They validate frontend behaviour, not rea
 ## Remaining work
 
 1. Successful login with a valid registered account, followed by cloud-backed note/save/bookmark/collection tests, reload, separate-session persistence, logout and account isolation. The secure owner login returned Invalid email or password. Passwords/codes must never be pasted into chat. No additional attempt was made after that credential rejection.
-2. Publish the authorized repair to GitHub main and verify the corresponding Vercel deployment; do not leave source and production divergent.
+2. GitHub/Vercel synchronization completed: main ref and production deployment both confirm repair commit b6770f2.
 3. Preview-only cloud fixture tests were not run for this repair. No production fixture account was created as a workaround.
 
-Neon production domain configuration is fixed. The attached `ytguide-db` resource reports Free (`free_v3`), no credit card required. No plan upgrade, AI subscription or wildcard-domain access was enabled.
+Neon production domain configuration is fixed. The attached `ytguide-db` resource reports Free (`free_v3`), no credit card required. Vercel’s API additionally confirms Hobby. No plan upgrade, AI subscription or wildcard-domain access was enabled.
 
 Provider domain setup reference: https://neon.com/docs/auth/guides/configure-domains .
