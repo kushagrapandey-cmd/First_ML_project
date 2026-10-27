@@ -1,7 +1,3 @@
-> Current v3.3 release: recommendations use a pinned quantized multilingual MiniLM sentence model on CPU, combined with TF-IDF and channel diversity. PostgreSQL shares candidate caching/budget reservations. The active catalogue has 54 verified entries; 139 cleaned legacy candidates remain separately labelled unverified. Read README.md and models/semantic/MODEL_CARD.md for the current inference/evaluation contract. Earlier lexical-only descriptions below document the baseline.
-
-> Updated behaviour (27 October 2026): sign-in is required for all new study activity. Legacy guest imports remain available. Search/navigation are restored from the URL. Live queries/cache keys include the actual goal; explicit Live mode fails clearly when unconfigured. The browser auth SDK has been replaced with a small same-origin HTTP adapter. See README.md for the current contract.
-
 # YTGuide system design
 
 ## Problem and scope
@@ -25,6 +21,16 @@ flowchart TD
 ```
 
 These are modules/functions in one Vercel project, not a claim of a separately operated microservices platform. Python stays with retrieval; Node uses official SQL/auth ecosystem packages for account features.
+
+## Recommendation model and data
+
+The Python function normalizes the actual goal and selected technology spellings, retrieves current YouTube metadata or reads the maintained catalogue, and filters candidates by topic/language/duration. The goal is included in both live retrieval and the shared PostgreSQL cache key.
+
+`lib/semantic.py` runs the pretrained multilingual MiniLM model through quantized ONNX Runtime on CPU. The query and each title/tags/description become normalized 384-dimensional vectors using attention-mask mean pooling. Inputs are truncated to 128 tokens. Cosine similarity estimates semantic relevance. The ranker combines 80% semantic score and 20% TF-IDF score, rejects semantic scores below 0.30, then greedily reduces repeated-channel exposure using a 0.15 penalty. These coefficients are heuristics, not probabilities or an optimized learning-to-rank model.
+
+The active catalogue has 54 verified metadata entries. The 139 valid unique legacy candidates are separate and unverified. We do not train the neural network on either dataset; they supply candidates and development evaluation examples. No transcripts, video understanding, chatbot, collaborative filtering or training on private notes are implemented. Missing or failed inference uses labelled keyword fallback.
+
+PostgreSQL stores shared successful candidate responses for 15 minutes, short-lived failures, in-flight leases and a daily retrieval budget. Metadata embeddings also have a bounded per-instance cache. This avoids adding Redis for the current workload, but cache expiry alone is not a database retention policy; old cache-row cleanup is future work.
 
 ## Schema and invariants
 
@@ -93,7 +99,7 @@ An interrupted multi-batch import can be retried. Previously applied batches are
 
 ## Deployment and failure behavior
 
-Compute and database use Singapore. The static UI is delivered through Vercel's CDN. The SQL driver uses serverless HTTP connections, avoiding a new persistent connection pool for every invocation.
+The deployment region is configured as Singapore alongside the database; inspect actual runtime placement rather than assuming every request executes there. The static UI is delivered through Vercel's CDN. The SQL driver uses serverless HTTP connections, avoiding a new persistent connection pool for every invocation.
 
 Migrations are additive and run during the build with an advisory transaction lock. Preview fixture checks exercise actual managed authentication and database behavior before production publication. Production builds skip synthetic signup tests.
 
@@ -110,6 +116,6 @@ Migrations are additive and run during the build with an advisory transaction lo
 
 ## Scale and trade-offs
 
-For an interview demo, the priorities are correctness, observable failures and defensible scope. The next scaling steps would be pagination/cursors for larger workspaces, a shared YouTube cache, rate controls for public retrieval, a least-privilege database role, backup/restore drills and account deletion/retention workflows. Add Redis only if measured workload or a cross-instance coordination requirement justifies another system.
+For an interview demo, the priorities are correctness, observable failures and defensible scope. The next scaling steps would be pagination/cursors for larger workspaces, stronger public abuse controls and expired-cache cleanup, a least-privilege database role, backup/restore drills and account deletion/retention workflows. Add Redis only if measured workload or a cross-instance coordination requirement justifies another system.
 
 Measure recommendation quality with a separately judged held-out query set, nDCG@5/MRR/coverage and simple baselines. Measure learning outcomes separately. Do not equate watch time, clicks or completion checkboxes with understanding.

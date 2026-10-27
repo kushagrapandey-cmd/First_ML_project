@@ -1,4 +1,4 @@
-# YTGuide verification — 26 October 2026
+# YTGuide verification — 27 October 2026
 
 ## Current release
 
@@ -23,7 +23,7 @@ The first Phase 2 build failed because root dependency autodetection used Python
 
 Identity uses Neon Auth, with signed session/JWT verification and ownership checks in the workspace API. User records live in Neon PostgreSQL. Account-scoped retry drafts do not replace cloud persistence; legacy guest data requires explicit import.
 
-The exact production origin was added to Neon's previously empty trusted-domain allowlist. A secure owner-provided browser sign-in then returned **Invalid email or password**. A successful personal owner session is therefore still unverified; do not describe this as a successful owner login.
+The exact production origin was added to Neon's previously empty trusted-domain allowlist. An earlier secure browser attempt returned **Invalid email or password**. On 27 October 2026, the owner subsequently confirmed successful account creation, login, collection creation and saved workspace data on production. This is owner-reported verification; it does not retroactively turn the earlier rejected attempt into a successful automated test. Email/password recovery and a separate-device walkthrough remain unverified.
 
 Real tests on isolated branch `br-round-bread-b33r9v1p` passed signup, session cookies, JWT signature/issuer/audience/expiry, saves, notes/version conflicts, collections, bookmarks, playback positions, idempotent imports, two-user isolation, forged-token rejection and logout. The runner cleaned its fixture users/records; the disposable branch expires after one day. No production fixture accounts were created.
 

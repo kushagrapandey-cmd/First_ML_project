@@ -4,6 +4,8 @@ A focused YouTube learning workspace with multilingual semantic recommendations:
 
 Live site: https://ytguide-five.vercel.app/
 
+Start here: [Architecture](SYSTEM_DESIGN.md) · [Interview guide](INTERVIEW_GUIDE.md) · [Verification](QA_REPORT.md) · [Roadmap](ROADMAP.md) · [Model card](models/semantic/MODEL_CARD.md)
+
 The original college Python/ML workshop explored how students could find educational videos without an endless feed. This version keeps the Python ranking engine and adds a personal account workspace. There is no chatbot.
 
 ## Current behaviour
@@ -57,7 +59,8 @@ The normalized goal is part of the live retrieval query **and cache key**. Postg
 - Smoothed IDF: `log((1 + N) / (1 + document_frequency)) + 1`.
 - Sublinear TF: `1 + log(term_count)`.
 - Cosine similarity over normalized query/document vectors.
-- Channel penalty: `similarity / (1 + 0.25 × previously_selected_from_channel)`.
+- Hybrid score: `0.8 × semantic cosine + 0.2 × TF-IDF cosine`; semantic matches below 0.30 are excluded. These are heuristic scores, not calibrated probabilities.
+- Hybrid channel adjustment: `score / (1 + 0.15 × previously_selected_from_channel)`. The lexical comparison uses 0.25.
 
 The current semantic ranker runs an actual pretrained neural sentence model, not a generative LLM. It does not watch videos, learn from private notes, judge teaching quality or promise “the best five videos.” No paid inference API is used. `ranking=lexical` selects the classical comparison; any inference fallback is labelled in the response and source notice.
 
@@ -121,7 +124,7 @@ Required server settings: `DATABASE_URL`, `NEON_AUTH_BASE_URL`. Optional: `YOUTU
 - Pending writes are not a cloud success. Notes have version checks; other fields use last accepted per-field writes.
 - YouTube controls its ads, branding and player suggestions. This app is not a browser blocker.
 - Email delivery/reset needs a real owner-controlled mailbox test. Account deletion/retention, collaboration, study plans and JSON restore are future work.
-- Keep the LinkedIn demo on hold until successful production account flows have been verified. Live-key search now passes. The missing trusted domain has been corrected. A subsequent owner login attempt returned Invalid email or password; successful login still requires a valid registered account.
+- On 27 October 2026, the owner confirmed successful account creation, login, collections and saved workspace data. This is owner-reported production verification, separate from automated isolated-backend checks. Password reset/email delivery and a second-device walkthrough still need their own checks.
 
 ## Credits
 
@@ -137,11 +140,11 @@ Original workshop team: **Kushagra Pandey, Aryan Gupta, Harsh Mishra and Ayush N
 
 ## Release status — 27 October 2026
 
-The repair is deployed to the existing Vercel `ytguide` project. Production live search is verified with the owner-provided key. The production Neon branch had no trusted origins; `https://ytguide-five.vercel.app` was added and read back successfully. The next real secure-browser login attempt passed the origin gate but returned **Invalid email or password**. Successful owner login and authenticated cloud persistence remain unverified; do not present that credential rejection as successful login.
+Both phases are deployed. GitHub main and the production Vercel deployment were verified at `b616e2567d0b6d9ff1919f79c43d833992167570`; GitHub Actions passed. Subsequent documentation updates do not change application behaviour. See [QA_REPORT.md](QA_REPORT.md) for evidence and limits.
 
-The owner explicitly authorized both GitHub and Vercel publication. The repair was published to GitHub `main` at `b6770f2f3171261ed78645760c793765069a2664`; Vercel production deployment `dpl_EwD5jV97EanwXDVtR5s4qt8xDEwj` reached READY from that exact commit. No paid plan or AI subscription was enabled. The attached Neon resource reports the Free plan, and Vercel’s API confirms Hobby. No paid generative AI is configured. YouTube uses the owner’s API key and is subject to Google quota limits.
+The owner confirmed successful account creation, login, collection creation and saved workspace data on production. An earlier rejected-password attempt is historical, not a current unresolved login blocker.
 
-MediConnect uses its own Express password/session implementation with Neon as its database. YTGuide uses Neon Managed Auth for identity plus a separate authenticated workspace API. Managed Auth is a design choice, not a requirement for using PostgreSQL. Both applications enforce record ownership in their server APIs.
+Neon reports Free and Vercel reports Hobby. No paid inference API or plan upgrade was introduced. Existing compute, storage and YouTube quotas still apply.
 
 ## Phase 1 reliability release — 27 October 2026
 
