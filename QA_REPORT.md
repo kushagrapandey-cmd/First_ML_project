@@ -40,3 +40,10 @@ The scratch environment took 9–12 seconds to fetch public signing keys with No
 - Shared candidate caching passed against the isolated database through independent connections, with one provider fetch.
 
 Neon reports Free (`free_v3`) and Vercel reports Hobby. No new paid account or subscription was introduced. Free tiers retain their normal quotas and cold-start limits.
+
+## Contact/feedback release — 27 October 2026
+
+- Added responsive, theme-aware contact links and a public feedback form, with a dedicated sending-only Resend credential held in Vercel Production.
+- Five focused tests cover hostile origins/body limits/header injection, recipient ownership/idempotency, honeypot and rate rejection, provider/configuration failures, duplicate clicks and draft retention. All 24 Node/DOM tests pass locally.
+- Python regression checks ran: 32 passed, three model-dependent cases skipped because local model assets were absent. CI downloads verified model assets before running the full suite.
+- Real isolated Neon SQL checks validate the new table and capped shared counter updates. Live browser delivery and layout remain deployment checks for this release.

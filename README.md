@@ -19,6 +19,7 @@ The original college Python/ML workshop explored how students could find educati
 - Explicit technology names constrain candidates; multilingual neural embeddings compare the meaning of your goal with lesson metadata, alongside keyword relevance.
 - Notes, saved/completed lessons, collections, timestamp bookmarks and resume positions belong to the authenticated user. The API checks authentication and ownership independently of the UI.
 - Notes use optimistic version checks; conflicts require an explicit choice. Imports use receipts to avoid duplicate retry batches.
+- Footer contact links and a public feedback form email the owner through Resend. Reply email is optional; no sign-in is required.
 - Light/dark themes, keyboard navigation, reduced motion, notes export, JSON backup and focus timer are included. The timer resets on reload; search context does not.
 
 ## Live search configuration
@@ -169,3 +170,11 @@ The semantic model remains a separate Phase 2 release; no neural inference is cl
 - We use pretrained weights for inference. We did **not** train the neural model on the workshop dataset.
 - `data/ranking_evaluation.json` records a 24-query manually authored relevance smoke test. Hybrid ranked the expected topic first for 22/24 queries versus 21/24 for keyword ranking; MRR@5 was 0.958 versus 0.889. This is a small development check, not an independent teaching-quality or learning-outcome study. Two top-one cases remain misses. Local cold/warm inference times are recorded separately and are not end-to-end website latency claims.
 - Model downloads and inference require no additional account/API key. Runtime compute and provider quotas still count toward existing free-tier limits; no plan was upgraded.
+
+## Contact and feedback
+
+The footer links to Kushagra's LinkedIn, GitHub and `kushagrapandey102@gmail.com`. `public/feedback.js` submits to the same-origin Node route `/api/feedback`. The recipient and subject are server-controlled; messages are plain text, with optional validated Reply-To. The browser retains the draft on failure and reuses a request ID on retry. Resend idempotency prevents duplicate accepted sends for the same payload within its retention window.
+
+Set server-only `RESEND_API_KEY` to a dedicated sending-only key in Vercel Production. The current `onboarding@resend.dev` sender delivers only to the Resend account owner's configured address; it is not a general outbound mail service. Configure a verified sender before changing the recipient/use case. No visitor API key or mail-client launch is needed.
+
+Migration `db/003_feedback.sql` adds shared counters: three attempts per address bucket per 15-minute window and 20 attempts per UTC day globally. Expired counter rows are removed after two days during submissions. HMAC identifiers are stored instead of raw addresses; feedback bodies and reply addresses are not stored in application tables. Resend and the recipient mailbox process the email. Origin checks, bounded JSON, validation and a honeypot provide additional abuse controls, not a guarantee against bots. Provider failure returns an actionable error and direct email remains available.

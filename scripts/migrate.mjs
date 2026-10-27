@@ -6,7 +6,7 @@ if(!process.env.DATABASE_URL) {
 } else {
   const sql=neon(process.env.DATABASE_URL);
   const statements=[];
-  for(const name of ['001_workspace.sql','002_search_cache.sql'])statements.push(...(await readFile(new URL('../db/'+name,import.meta.url),'utf8')).split('-- statement').map(s=>s.trim()).filter(Boolean));
+  for(const name of ['001_workspace.sql','002_search_cache.sql','003_feedback.sql'])statements.push(...(await readFile(new URL('../db/'+name,import.meta.url),'utf8')).split('-- statement').map(s=>s.trim()).filter(Boolean));
   await sql.transaction([sql`SELECT pg_advisory_xact_lock(938426104)`,...statements.map(s=>sql.query(s,[]))]);
-  console.log('YTGuide workspace migration 1 applied successfully.');
+  console.log('YTGuide database migrations applied successfully.');
 }
