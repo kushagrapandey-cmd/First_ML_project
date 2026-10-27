@@ -46,4 +46,8 @@ Neon reports Free (`free_v3`) and Vercel reports Hobby. No new paid account or s
 - Added responsive, theme-aware contact links and a public feedback form, with a dedicated sending-only Resend credential held in Vercel Production.
 - Five focused tests cover hostile origins/body limits/header injection, recipient ownership/idempotency, honeypot and rate rejection, provider/configuration failures, duplicate clicks and draft retention. All 24 Node/DOM tests pass locally.
 - Python regression checks ran: 32 passed, three model-dependent cases skipped because local model assets were absent. CI downloads verified model assets before running the full suite.
-- Real isolated Neon SQL checks validate the new table and capped shared counter updates. Live browser delivery and layout remain deployment checks for this release.
+- Real isolated Neon SQL checks validated the new table and capped shared counter updates: hits 1, 2 and 3 accepted; fourth returned no row.
+- GitHub commit `caf9d604ab437d2d244ade733a3559413b0edafa` deployed READY as `dpl_AYYSCHo9CDUg9SXk6q5CUTRXqYr6`. GitHub CI run `40439716184` passed model preparation, evaluation, Python/Node tests, syntax and build.
+- Signed-out production browser submission showed confirmed success and reset the form. Resend reported the single labelled test email delivered to the fixed owner recipient; subject: “YTGuide — new website feedback”. This establishes provider-reported delivery, not inbox-versus-spam placement.
+- Desktop light and dark footer layouts were visually inspected. Responsive stacking/input sizing are implemented; a separate physical-phone walkthrough was not performed in this release.
+- Production HTTP checks: GET 405, hostile Origin 403 and too-short message 400. No additional email was sent for these invalid requests.
