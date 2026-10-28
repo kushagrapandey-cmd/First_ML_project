@@ -69,3 +69,34 @@ Validation completed locally:
 - CI now provisions disposable PostgreSQL 16 and sets `TEST_DATABASE_URL` so the database regressions run on every push and pull request. Without that setting, the local database test is explicitly skipped.
 
 No production records or deployments were changed. The build was run without production database/auth credentials; real managed-auth preview verification and desktop/mobile browser coverage were not run for this change. Apply the additive migration through the normal build before serving the updated application.
+
+
+## Complete workspace release — 28 October 2026
+
+Scope: stabilize the currently shipped product. Proposed roadmap features (account deletion, JSON restore, collaboration, study paths and quizzes) are not advertised as implemented.
+
+Additional defects fixed:
+
+- Two tabs could overwrite one pending-change array. Durable per-operation records now preserve independent changes; Web Locks coordinate sending and stored in-flight markers prevent another tab from merging edits into a request already sent.
+- A worker tab could advance a note version without showing that note’s text. Acknowledgements now preserve the base of unseen drafts, and conflict details are available to the originating tab.
+- Token acquisition or a failed request crossing an account switch could affect the wrong workspace. Requests verify token ownership; late success/error paths check account generation.
+- Reloading with pending changes previously skipped all other fresh cloud data. Pending operations now overlay the latest cloud snapshot, including offline additions and deletions.
+- Temporary token/network errors no longer falsely expire authentication. Transient retries are delayed to prevent tabs from bouncing failed work between one another. Storage failures keep a warned in-memory draft until sync succeeds.
+- Goal typing no longer creates a history entry per keystroke; stale searches cannot replace the empty custom-topic prompt; deleting a collection while editing it resets the form; rejected rename conflicts can be discarded and reconciled.
+- Database migration 005 prevents concurrent manual creation/import from exceeding 50 collections.
+
+| User flow | Evidence |
+| --- | --- |
+| Catalogue and multilingual recommendations | All 35 Python tests, including pinned ONNX inference; 24-query ranking evaluation |
+| Managed accounts, sessions and logout | Preview `CLOUD_QA_PASS` with synthetic users and real provider/JWT/SQL; two-user ownership checks |
+| Notes, saves, completion and reload | Chromium desktop/phone journeys through the UI into real PostgreSQL workspace operations |
+| Concurrent tabs, immediate reload and offline retry | Dedicated Chromium journeys plus controlled in-flight/account-switch regressions |
+| Collections, bookmarks and exports | Browser journeys and DOM tests; database ownership, quota, rollback and concurrency checks |
+| Player position/seek/error handling | Controlled IFrame API fixture for pause/resume/seek; external YouTube availability remains provider-controlled |
+| Timer, theme and keyboard/guest gates | DOM tests plus desktop/phone Chromium journeys; no horizontal overflow at 390 px |
+| Password recovery | UI and adapter error/success contract tests. Actual reset-code arrival and completed recovery through a real inbox were not exercised in this release |
+| Public feedback | Validation, rate limits, recipient, provider-failure, idempotency and UI tests; existing owner-confirmed production delivery evidence above |
+
+Final local validation: **49 Node tests passed**, **35 Python tests passed**, **10 browser tests passed**. Build and syntax checks passed. The Chromium download’s primary host returned a bad archive; the official fallback succeeded, so browser coverage was actually executed. CI installs Chromium and runs the same desktop/phone suite with PostgreSQL on every push and pull request.
+
+Browser fixtures do not transmit real credentials or feedback, and their temporary database schemas are removed. The production user’s saved lessons and notes were inspected without editing or deleting them. No zero-bug or all-providers/all-browsers guarantee is claimed. Real mailbox recovery and a physical second-device walkthrough remain distinct from the automated evidence above.

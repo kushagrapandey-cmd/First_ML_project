@@ -6,7 +6,7 @@
   let client,user=null,mode='signin',queue=[],working=false,sessionExpired=false,epoch=0,lastError='',generation=0;
   let accountReady=false,syncDebounce;
   const pendingKey='ytguide.pending.v3',operationPrefix='ytguide.operation.v4.';
-  const tabId=crypto.randomUUID();
+  const tabId=crypto.randomUUID(),volatileItems=new Map();
   let syncTask=null,activeOperation=null,lastCreated=0;
   function readQueue(){
     const legacy=api.read(pendingKey,[]);
@@ -19,14 +19,21 @@
       if(migrated)api.write(pendingKey,[]);
     }
     const prefix=api.scope+':'+operationPrefix,items=[];
-    for(const key of Object.keys(localStorage))if(key.startsWith(prefix)){
+    let keys=[];try{keys=Object.keys(localStorage);}catch{}
+    for(const key of keys)if(key.startsWith(prefix)){
       const item=api.read(key.slice(api.scope.length+1),null);
       if(item&&typeof item.operationId==='string'&&typeof item.action==='string')items.push(item);
     }
+    for(const [key,item] of volatileItems)if(key.startsWith(prefix)){const index=items.findIndex(q=>q.operationId===item.operationId);if(index>=0)items[index]=item;else items.push(item);}
     return items.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)||a.operationId.localeCompare(b.operationId));
   }
-  const saveItem=item=>api.write(operationPrefix+item.operationId,item);
-  const removeItem=item=>localStorage.removeItem(api.scope+':'+operationPrefix+item.operationId);
+  const saveItem=item=>{
+    const key=api.scope+':'+operationPrefix+item.operationId;
+    if(api.write(operationPrefix+item.operationId,item)){volatileItems.delete(key);return true;}
+    volatileItems.set(key,item);lastError='Device storage unavailable · keep this tab open until synced';return false;
+  };
+  const removeItem=item=>{const key=api.scope+':'+operationPrefix+item.operationId;localStorage.removeItem(key);volatileItems.delete(key);};
+  window.addEventListener('beforeunload',event=>{if(volatileItems.size){event.preventDefault();event.returnValue='';}});
 
   const message=text=>{$('#account-message').textContent=text;};
   function status(){
@@ -96,15 +103,15 @@
     const identity=user.id,ownGeneration=generation;
     const result=await cloud();
     if(user?.id!==identity||generation!==ownGeneration)return;
-    queue=readQueue();api.applyCloud(result.workspace,queue);
+    queue=readQueue();for(const item of queue)if(item.retryAt){delete item.retryAt;saveItem(item);}api.applyCloud(result.workspace,queue);
     for(const item of queue.filter(q=>q.blocked)){const latest=result.workspace.notes.find(n=>n.video_id===item.video.id);if(latest)api.conflict(item.video.id,latest);}
     api.setAuthenticated(true);status();processQueue();
   }
   function enqueue(body){
     if(!user)return;
     queue=readQueue();epoch++;
-    if(body.action==='note')body.version=api.getNoteVersion(body.video.id);
-    const merge=queue.find((q,index)=>q.operationId!==activeOperation&&q.owner===tabId&&q.action===body.action&&q.video?.id===body.video?.id&&['note','lesson'].includes(q.action));
+    if(body.action==='note')body.version=Math.max(api.getNoteVersion(body.video.id),...queue.filter(q=>q.owner===tabId&&q.action==='note'&&q.video.id===body.video.id).map(q=>q.version));
+    const merge=queue.find((q,index)=>!q.sending&&q.operationId!==activeOperation&&q.owner===tabId&&q.action===body.action&&q.video?.id===body.video?.id&&['note','lesson'].includes(q.action));
     if(merge){if(body.action==='note')merge.content=body.content;else Object.assign(merge.patch,body.patch);}
     else queue.push({...body,operationId:crypto.randomUUID(),owner:tabId,createdAt:(lastCreated=Math.max(Date.now(),lastCreated+1))});
     const pending=merge||queue.at(-1);saveItem(pending);status();
@@ -128,27 +135,30 @@
       while(user?.id===identity&&generation===ownGeneration){
         queue=readQueue();if(!queue.length)break;
         const item=queue[0];activeOperation=item.operationId;
+        if(item.retryAt>Date.now())break;
         if(item.rejected){lastError='Server rejected a change · discard it or export a backup';break;}
-        if(item.blocked){lastError='Resolve the note conflict in its lesson';break;}
+        if(item.blocked){if(item.conflictNote)api.conflict(item.video.id,item.conflictNote);lastError='Resolve the note conflict in its lesson';break;}
         try{
+          item.sending=true;saveItem(item);
           const result=await cloud(item);
           if(user?.id!==identity||generation!==ownGeneration)return;
           queue=readQueue();
           if(item.action==='note'){
-            api.noteSynced(item.video.id,item.content,result.note.version);
+            api.noteSynced(item.video.id,item.content,result.note.version,item.owner===tabId);
             for(const following of queue.slice(1))if(following.owner===item.owner&&following.action==='note'&&following.video.id===item.video.id&&following.version===item.version){following.version=result.note.version;saveItem(following);}
           }
           removeItem(item);queue=readQueue();lastError='';
         }catch(error){
           if(user?.id!==identity||generation!==ownGeneration)return;
+          delete item.sending;saveItem(item);
           if(error.status===409&&item.action==='note'&&error.result?.note){
             queue=readQueue();const latest=error.result.note;
-            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version);for(const following of queue.slice(1))if(following.owner===item.owner&&following.action==='note'&&following.video.id===item.video.id&&following.version===item.version){following.version=latest.version;saveItem(following);}removeItem(item);queue=readQueue();continue;}
-            item.blocked=true;saveItem(item);api.conflict(item.video.id,latest);lastError='Note conflict · open the affected lesson';
+            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version,item.owner===tabId);for(const following of queue.slice(1))if(following.owner===item.owner&&following.action==='note'&&following.video.id===item.video.id&&following.version===item.version){following.version=latest.version;saveItem(following);}removeItem(item);queue=readQueue();continue;}
+            item.blocked=true;item.conflictNote=latest;saveItem(item);api.conflict(item.video.id,latest);lastError='Note conflict · open the affected lesson';
           }else if(error.status===409&&['createCollection','bookmark'].includes(item.action)){
             const result=await cloud();if(user?.id!==identity||generation!==ownGeneration)return;const exists=item.action==='createCollection'?result.workspace.collections.some(c=>c.id===item.id):result.workspace.bookmarks.some(b=>b.id===item.id);
             if(exists){removeItem(item);queue=readQueue();continue;}item.rejected=true;saveItem(item);lastError=error.message;
-          }else{lastError=error.message;if([400,404,409,413,415].includes(error.status)){item.rejected=true;saveItem(item);}if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}}
+          }else{lastError=error.message;if(![400,401,404,409,413,415].includes(error.status)){item.retryAt=Date.now()+15000;saveItem(item);}if([400,404,409,413,415].includes(error.status)){item.rejected=true;saveItem(item);}if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}}
           break;
         }
       }
@@ -211,15 +221,16 @@
       api.setScope('guest');status();$('#account-dialog').close();api.toast('Signed out. Study activity is locked until you sign in again.');
     }catch(error){api.toast(error.message);}
   });
-  $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else{lastError='';processQueue();}});
+  function retryQueue(){queue=readQueue();for(const item of queue)if(item.retryAt){delete item.retryAt;saveItem(item);}lastError='';processQueue();}
+  $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else retryQueue();});
   $('#sync-discard').addEventListener('click',async()=>{
     if(!queue[0]?.rejected||!confirm('Discard the server-rejected change? Export a workspace backup first if you want to keep a separate copy.'))return;
     removeItem(queue[0]);queue=readQueue();lastError='';await processQueue();await refresh();status();
   });
   $('#cloud-refresh').addEventListener('click',()=>{if(queue.length)api.toast('Sync pending changes before refreshing.');else if($('#lesson-dialog').open)api.toast('Close the lesson before refreshing.');else refresh();});
-  window.addEventListener('online',processQueue);
+  window.addEventListener('online',retryQueue);
   window.addEventListener('storage',event=>{
-    if(user&&event.key?.startsWith(api.scope+':'+operationPrefix)){queue=readQueue();epoch++;status();processQueue();}
+    if(user&&event.key?.startsWith(api.scope+':'+operationPrefix)){queue=readQueue();epoch++;status();clearTimeout(syncDebounce);syncDebounce=setTimeout(processQueue,700);}
   });
   window.addEventListener('focus',async()=>{
     if(!client||!user)return;

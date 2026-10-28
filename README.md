@@ -8,6 +8,10 @@ Start here: [Architecture](SYSTEM_DESIGN.md) · [Interview guide](INTERVIEW_GUID
 
 The original college Python/ML workshop explored how students could find educational videos without an endless feed. This version keeps the Python ranking engine and adds a personal account workspace. There is no chatbot.
 
+## Current release — 28 October 2026
+
+The shipped feature set has a release verification matrix in [QA_REPORT.md](QA_REPORT.md#complete-workspace-release--28-october-2026). It covers 49 Node tests, all 35 Python tests and 10 Chromium browser journeys at desktop and phone widths. Browser journeys use the real workspace SQL against disposable PostgreSQL, with fixture identity; a separate preview build verifies managed authentication. These are explicit coverage results, not a promise that future browser, provider or network changes cannot cause bugs.
+
 ## Current behaviour
 
 - Anyone can browse recommendations, watch a lesson, change appearance and use the focus timer.
@@ -77,7 +81,7 @@ The current semantic ranker runs an actual pretrained neural sentence model, not
 | API JWT | None | Short-lived, memory only |
 | Video media | Not stored | Not stored |
 
-Every note edit enters the account-scoped persistent outbox immediately; the 700 ms debounce delays only the network request. The draft and its cloud version survive reload, and a newer cloud note still requires explicit conflict resolution.
+Every note edit enters the account-scoped persistent outbox immediately; the 700 ms debounce delays only the network request. The draft and its cloud version survive reload, and a newer cloud note still requires explicit conflict resolution. Each queued operation has its own account-scoped record, so two tabs cannot replace one shared array. Web Locks coordinate sending, in-flight operations stay immutable, and another tab’s acknowledgement cannot silently advance the version of text you have not seen. Token ownership is checked before a workspace request; stale responses are ignored after account changes. Transient failures use a retry delay, while Retry sync and reconnecting can resume immediately. If device storage fails, an in-memory fallback warns you to keep the tab open until the change syncs.
 
 Cloud data is applied only after the account API responds successfully. Saving is locked while authentication is unresolved or expired. Normal sign-out clears synced account caches; pending writes can be retained with an explicit warning for recovery. Browser caches are not encrypted.
 
@@ -94,12 +98,16 @@ npm run test:server
 python -m unittest discover -s tests -v
 python scripts/evaluate-ranking.py
 npm run build
+# Use a disposable PostgreSQL database for browser/database tests:
+# TEST_DATABASE_URL=postgres://... npm run test:server
+npx playwright install chromium
+# TEST_DATABASE_URL=postgres://... npm run test:browser
 npm run dev
 ```
 
 The Python local server serves static assets/recommendations, not Node account functions. Use a provisioned Vercel preview to test real managed authentication/database boundaries. Do not copy production credentials into source code.
 
-The build applies additive database migrations when `DATABASE_URL` is available. Migration `004_bookmark_quota.sql` enforces the 100-bookmark limit per lesson for both manual saves and imports, with a parent-row lock for concurrent requests. An overflowing import batch is rejected atomically; guest originals stay available. Existing records are never pruned. Workspace loading keeps the latest 1,000 history lessons plus every saved, completed, noted, bookmarked or collection lesson, regardless of age. Preview builds run `scripts/verify-cloud.mjs` with isolated synthetic fixture users, test ownership/conflicts/CRUD, and clean up fixture records. It skips production. Unit/DOM tests use mocked services and do not by themselves establish real cloud success. `tests/workspace-db.test.mjs` runs against real PostgreSQL when `TEST_DATABASE_URL` points to a disposable test database; it creates and drops its own schema. CI provisions PostgreSQL 16 and runs these tests, including concurrent writes and import rollback. Never use a production URL for this setting.
+The build applies additive database migrations when `DATABASE_URL` is available. Migration `004_bookmark_quota.sql` enforces the 100-bookmark limit per lesson for both manual saves and imports, with a parent-row lock for concurrent requests. An overflowing import batch is rejected atomically; guest originals stay available. Migration `005_collection_quota.sql` similarly coordinates the 50-collection quota for manual creation and imports. Existing records are never pruned. Workspace loading keeps the latest 1,000 history lessons plus every saved, completed, noted, bookmarked or collection lesson, regardless of age. Preview builds run `scripts/verify-cloud.mjs` with isolated synthetic fixture users, test ownership/conflicts/CRUD, and clean up fixture records. It skips production. Unit/DOM tests use mocked services and do not by themselves establish real cloud success. `tests/workspace-db.test.mjs` runs against real PostgreSQL when `TEST_DATABASE_URL` points to a disposable test database; it creates and drops its own schema. CI provisions PostgreSQL 16 and runs these tests, including concurrent writes and import rollback, then runs the Chromium desktop/phone journeys in `tests/browser/`. Never use a production URL for this setting.
 
 Required server settings: `DATABASE_URL`, `NEON_AUTH_BASE_URL`. Optional: `YOUTUBE_API_KEY`. No secret is returned by the public readiness endpoint.
 

@@ -33,7 +33,7 @@ const test=base.extend({backend:async({context},use)=>{
   }catch(e){await route.fulfill({status:e.status||409,json:{error:e.message}});}
  });
  try{await use({offline:v=>{offline=v;},guest:()=>{signedIn=false;},workspace:()=>load(user,asUser)});}
- finally{await pool.query(`DROP SCHEMA ${schema} CASCADE`);await pool.end();}
+ finally{for(const page of context.pages())await page.close();await pool.query(`DROP SCHEMA ${schema} CASCADE`);await pool.end();}
 }});
 test.skip(!process.env.TEST_DATABASE_URL,'Set TEST_DATABASE_URL to a disposable PostgreSQL database');
 const discover=async page=>{
@@ -74,4 +74,15 @@ test('offline edits stay pending and retry successfully when the connection retu
  await discover(page);await page.locator('[data-watch]').first().click();backend.offline(true);await page.locator('#lesson-notes').fill('Offline browser draft');await page.locator('#close-lesson').click();
  await page.locator('[data-view="workspace"]').first().click();await expect(page.locator('#sync-status')).toContainText('pending');
  backend.offline(false);await page.locator('#sync-retry').click();await expect(page.locator('#sync-status')).toHaveText('Cloud synced ✓');expect((await backend.workspace()).notes[0].content).toBe('Offline browser draft');
+});
+test('guest gates, keyboard navigation, timer and theme work without saving personal data',async({page,backend})=>{
+ backend.guest();await page.goto('/?topic=sql&source=catalogue');await expect(page.locator('#results .video-card').first()).toBeVisible();
+ await page.getByRole('link',{name:'Skip to content',exact:true}).press('Enter');await expect(page.locator('#main')).toBeFocused();
+ await page.locator('[data-save]').first().click();await expect(page.locator('#account-dialog')).toBeVisible();await page.keyboard.press('Escape');
+ await page.locator('[data-watch]').first().click();await expect(page.locator('#lesson-notes')).toBeDisabled();await page.keyboard.press('Escape');
+ const theme=await page.locator('#theme').isVisible()?page.locator('#theme'):page.locator('#theme-mobile');await theme.click();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ if(await page.locator('#start-focus').isVisible())await page.locator('#start-focus').click();
+ else{await page.locator('[data-watch]').first().click();await page.locator('#lesson-timer').click();}
+ await page.locator('#timer-toggle').click();await expect(page.locator('#timer-toggle')).toHaveText('Pause');await page.locator('#timer-toggle').click();await page.locator('#timer-reset').click();await expect(page.locator('#timer-display')).toHaveText('25:00');
+ const state=await backend.workspace();expect(state.lessons).toHaveLength(0);expect(state.notes).toHaveLength(0);
 });

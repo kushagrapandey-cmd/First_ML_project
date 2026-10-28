@@ -371,8 +371,9 @@ window.YTGuide = {
     write('ytguide.saved.v2',saved);write('ytguide.completed.v2',completed);write('ytguide.notes.v2',notes);write('ytguide.lessons.v3',lessonIndex);persistExtras();
     updateWorkspace();renderResults();
   },
-  noteSynced(id,content,version) {
-    noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);
+  noteSynced(id,content,version,own=false) {
+    // A worker tab must not advance the base of another tab's unseen draft.
+    if(own||notes[id]===content){noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);}
     if(currentVideo?.id===id&&notes[id]===content)$('#note-status').textContent='Cloud synced ✓';
   },
   flushNote(){window.dispatchEvent(new Event('ytguide:flush-sync'));},

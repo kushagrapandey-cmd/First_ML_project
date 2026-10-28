@@ -181,3 +181,14 @@ test('Password recovery shows code entry and only reports reset after provider c
   w.client.emailOtp.resetPassword=async()=>({data:{success:true}});submit();await tick();assert.match($('#account-message').textContent,/Password reset/);assert.equal($('#otp-field').hidden,true);
  }finally{dom.window.close();}
 });
+
+test('Unavailable device storage retains the draft in memory and can retry without forcing sign-in',async()=>{
+ let offline=true;const saved=[];
+ const p=await page({backend:async b=>{if(offline)throw new Error('Offline');saved.push(b);return response(b.action==='note'?{note:{content:b.content,version:2}}:{ok:true});}});
+ const original=p.store.setItem;
+ try{
+  p.$('[data-watch]').click();await tick();p.store.setItem=()=>{throw new Error('QuotaExceededError');};
+  p.note('Keep this draft in memory');await p.flush();assert.equal(p.w.YTGuide.authenticated,true);assert.equal(p.w.YTGuide.state.notes[video.id],'Keep this draft in memory');
+  p.store.setItem=original;offline=false;p.w.dispatchEvent(new p.w.Event('online'));await tick();assert.ok(saved.some(b=>b.content==='Keep this draft in memory'));
+ }finally{p.store.setItem=original;p.dom.window.close();}
+});

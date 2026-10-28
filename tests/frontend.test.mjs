@@ -111,7 +111,7 @@ test('Sign-in form connects cloud workspace, syncs a save, and logout removes ac
     assert.equal($('#lesson-dialog').open,true,'Return to the requested lesson after sign-in');
     assert.ok(w.YTGuide.state.saved.some(v=>v.id===lesson.id),'Complete the original Save action');
     $('[data-save]').click();await new Promise(resolve=>setImmediate(resolve));
-    assert.ok(mutations.some(m=>m.action==='lesson'&&m.patch.saved===true),JSON.stringify({mutations,storage:Object.entries(w.localStorage),status:$('#sync-status').textContent}));
+    assert.ok(mutations.some(m=>m.action==='lesson'&&m.patch.saved===true));
     assert.equal($('#sync-status').textContent,'Cloud synced ✓');
     $('#account-button').click();$('#sign-out').click();await new Promise(resolve=>setImmediate(resolve));
     assert.equal(w.YTGuide.authenticated,false);assert.equal(w.YTGuide.state.saved.length,0);
