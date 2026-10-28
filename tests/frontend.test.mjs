@@ -5,6 +5,8 @@ import {JSDOM} from 'jsdom';
 import {createClient} from '../src/auth-sdk.js';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const script=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
+const jwt=id=>'e30.'+Buffer.from(JSON.stringify({sub:id})).toString('base64url')+'.fixture';
+const pending=w=>Object.keys(w.localStorage).filter(k=>k.startsWith('user:note-user:ytguide.operation.v4.')).map(k=>JSON.parse(w.localStorage.getItem(k)));
 const lesson={id:'AAAAAAAAAAA',title:'SQL joins lesson',channel:'Fixture',topic:'sql',language:'en'};
 async function page(url='https://ytguide.test/?topic=sql&source=catalogue#discover'){
   const dom=new JSDOM(html,{url,runScripts:'outside-only',pretendToBeVisual:true});
@@ -88,7 +90,7 @@ test('Sign-in form connects cloud workspace, syncs a save, and logout removes ac
   const mutations=[];let session=null;
   const cloudLesson={...lesson,id:'BBBBBBBBBBB',title:'Cloud lesson'};
   const workspace={lessons:[{video_id:cloudLesson.id,metadata:cloudLesson,saved:true,completed:false,position_seconds:0}],notes:[],collections:[],bookmarks:[],memberships:[]};
-  w.testClient={getSession:async()=>({data:session}),token:async()=>({data:{token:'fixture'}}),signIn:{email:async()=>{session={user:{id:'fixture-user',name:'Fixture',email:'fixture@example.invalid'}};return {data:session};}},signOut:async()=>{session=null;return {data:{success:true}};}};
+  w.testClient={getSession:async()=>({data:session}),token:async()=>({data:{token:jwt('fixture-user')}}),signIn:{email:async()=>{session={user:{id:'fixture-user',name:'Fixture',email:'fixture@example.invalid'}};return {data:session};}},signOut:async()=>{session=null;return {data:{success:true}};}};
   w.fetch=async(url,options)=>{
     if(url.includes('action=config'))return {ok:true,json:async()=>({accountsConfigured:true})};
     if(url==='/api/workspace'){
@@ -109,7 +111,7 @@ test('Sign-in form connects cloud workspace, syncs a save, and logout removes ac
     assert.equal($('#lesson-dialog').open,true,'Return to the requested lesson after sign-in');
     assert.ok(w.YTGuide.state.saved.some(v=>v.id===lesson.id),'Complete the original Save action');
     $('[data-save]').click();await new Promise(resolve=>setImmediate(resolve));
-    assert.ok(mutations.some(m=>m.action==='lesson'&&m.patch.saved===true));
+    assert.ok(mutations.some(m=>m.action==='lesson'&&m.patch.saved===true),JSON.stringify({mutations,storage:Object.entries(w.localStorage),status:$('#sync-status').textContent}));
     assert.equal($('#sync-status').textContent,'Cloud synced ✓');
     $('#account-button').click();$('#sign-out').click();await new Promise(resolve=>setImmediate(resolve));
     assert.equal(w.YTGuide.authenticated,false);assert.equal(w.YTGuide.state.saved.length,0);
@@ -152,7 +154,7 @@ async function noteAccount(storage={},cloudContent='Cloud original',version=7,of
   for(const [key,value] of Object.entries(storage))w.localStorage.setItem(key,value);
   const posts=[];
   const workspace={lessons:[{video_id:lesson.id,metadata:lesson,saved:true,completed:false,position_seconds:0}],notes:[{video_id:lesson.id,content:cloudContent,version}],collections:[],bookmarks:[],memberships:[]};
-  w.testClient={getSession:async()=>({data:{user:{id:'note-user',name:'Notes'}}}),token:async()=>({data:{token:'fixture'}})};
+  w.testClient={getSession:async()=>({data:{user:{id:'note-user',name:'Notes'}}}),token:async()=>({data:{token:jwt('note-user')}})};
   let offline=offlineInitially;
   w.fetch=async(url,options)=>{
     if(url.includes('action=config'))return {ok:true,json:async()=>({accountsConfigured:true})};
@@ -179,7 +181,7 @@ test('Reload before the note debounce preserves a durable account-scoped draft a
       first.$('#lesson-notes').value=value;
       first.$('#lesson-notes').dispatchEvent(new first.w.Event('input',{bubbles:true}));
     }
-    const queued=JSON.parse(first.w.localStorage.getItem('user:note-user:ytguide.pending.v3'));
+    const queued=pending(first.w);
     assert.equal(queued.length,1);assert.equal(queued[0].content,'Newest local draft');assert.equal(queued[0].version,7);
     assert.equal(first.posts.length,0,'Network sends remain debounced');
     storage=Object.fromEntries(Object.entries(first.w.localStorage));
@@ -189,7 +191,7 @@ test('Reload before the note debounce preserves a durable account-scoped draft a
     assert.equal(next.w.YTGuide.state.notes[lesson.id],'Newest local draft');
     assert.equal(JSON.parse(next.w.localStorage.getItem('user:note-user:ytguide.notes.v2'))[lesson.id],'Newest local draft');
     assert.equal(next.posts.find(p=>p.action==='note').version,7);
-    assert.equal(JSON.parse(next.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,0);
+    assert.equal(pending(next.w).length,0);
     assert.equal(next.w.YTGuide.getNoteVersion(lesson.id),8);
   }finally{next.dom.window.close();}
 });
@@ -202,7 +204,7 @@ test('A reloaded draft keeps its local text and exposes a genuine newer-cloud co
   const p=await noteAccount(storage,'Changed on another device',8);
   try{
     assert.equal(p.w.YTGuide.state.notes[lesson.id],'Local draft');
-    assert.equal(JSON.parse(p.w.localStorage.getItem('user:note-user:ytguide.pending.v3'))[0].blocked,true);
+    assert.equal(pending(p.w)[0].blocked,true);
     p.$('[data-watch]').click();await tick();
     assert.equal(p.$('#lesson-notes').value,'Local draft');
     assert.equal(p.$('#note-conflict').hidden,false);
@@ -231,12 +233,12 @@ test('Offline reload keeps a pending draft until a later online retry',async()=>
   const offline=await noteAccount(storage,'Cloud original',7,true);let retryStorage;
   try{
     assert.equal(offline.w.YTGuide.state.notes[lesson.id],'Offline draft');
-    assert.equal(JSON.parse(offline.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,1);
+    assert.equal(pending(offline.w).length,1);
     retryStorage=Object.fromEntries(Object.entries(offline.w.localStorage));
   }finally{offline.dom.window.close();}
   const online=await noteAccount(retryStorage);
   try{
     assert.equal(online.posts.find(p=>p.action==='note').content,'Offline draft');
-    assert.equal(JSON.parse(online.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,0);
+    assert.equal(pending(online.w).length,0);
   }finally{online.dom.window.close();}
 });

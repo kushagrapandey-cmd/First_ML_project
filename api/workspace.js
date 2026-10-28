@@ -111,13 +111,14 @@ async function importGuest(user,body,runAsUser) {
   const importId=uuid(body.id);
   if(!Array.isArray(body.lessons)||body.lessons.length>25||!Array.isArray(body.collections)||body.collections.length>50)throw new HttpError(400,'Invalid import batch.');
   const lessons=body.lessons.map(row=>{
+    if(!row||typeof row!=='object'||Array.isArray(row))throw new HttpError(400,'Invalid imported lesson.');
     const v=video(row.video);
     if(typeof row.saved!=='boolean'||typeof row.completed!=='boolean')throw new HttpError(400,'Invalid imported state.');
     const content=text(row.note??'',8000,'imported note');
     if(!Array.isArray(row.bookmarks)||row.bookmarks.length>100||!Array.isArray(row.collections)||row.collections.length>50)throw new HttpError(400,'Invalid imported lesson.');
     return {...row,video:v,note:content,position:integer(row.position??0,0,604800,'position'),bookmarks:row.bookmarks.map(b=>({id:uuid(b.id),seconds:integer(b.seconds,0,604800,'timestamp'),label:text(b.label,200,'bookmark',false)})),collections:row.collections.map(n=>text(n,60,'collection name',false))};
   });
-  const collections=body.collections.map(c=>({id:uuid(c.id),name:text(c.name,60,'collection name',false)}));
+  const collections=body.collections.map(c=>{if(!c||typeof c!=='object')throw new HttpError(400,'Invalid imported collection.');return {id:uuid(c.id),name:text(c.name,60,'collection name',false)};});
   const [prior]=await runAsUser(user.id,sql=>[sql`SELECT import_id FROM workspace_imports WHERE user_id=${user.id} AND import_id=${importId}::uuid`]);
   if(prior.length)return {ok:true,alreadyImported:true};
   await runAsUser(user.id,sql=>{
@@ -149,6 +150,7 @@ export default async function handler(req,res) {
     return respond(res,result.conflict?409:200,result);
   }catch(error){
     if(error.code==='23514'&&error.constraint==='bookmark_lesson_limit')return respond(res,409,{error:'The 100-bookmark lesson limit was reached. This change was not saved; any guest import originals remain on this device.'});
+    if(error.code==='23514'&&error.constraint==='study_collection_limit')return respond(res,409,{error:'The 50-collection limit was reached. This change was not saved.'});
     if(error.code==='23505')return respond(res,409,{error:'This name or record already exists.'});
     if(error instanceof HttpError)return respond(res,error.status,{error:error.message});
     console.error('workspace_request_failed',error.code||error.name);

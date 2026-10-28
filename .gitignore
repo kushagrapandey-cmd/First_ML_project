@@ -12,3 +12,6 @@ public/auth-sdk.js
 models/semantic/*.onnx
 models/semantic/tokenizer.json
 models/semantic/*.tmp
+
+
+playwright-report/
