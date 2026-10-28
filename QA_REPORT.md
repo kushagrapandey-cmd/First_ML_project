@@ -51,3 +51,21 @@ Neon reports Free (`free_v3`) and Vercel reports Hobby. No new paid account or s
 - Signed-out production browser submission showed confirmed success and reset the form. Resend reported the single labelled test email delivered to the fixed owner recipient; subject: “YTGuide — new website feedback”. This establishes provider-reported delivery, not inbox-versus-spam placement.
 - Desktop light and dark footer layouts were visually inspected. Responsive stacking/input sizing are implemented; a separate physical-phone walkthrough was not performed in this release.
 - Production HTTP checks: GET 405, hostile Origin 403 and too-short message 400. No additional email was sent for these invalid requests.
+
+
+## YTGuide audit fixes — 28 October 2026
+
+The three YTGuide findings are fixed in this change:
+
+- **YT-01:** Note edits enter the durable, account-scoped outbox synchronously. Only network dispatch waits 700 ms. Cached note versions survive reload, preserving optimistic conflict detection. Regression coverage includes immediate reload, coalesced typing, empty notes, offline replay and a newer cloud-note conflict. The immediate-reload test fails against the original frontend and passes with this fix.
+- **YT-02:** Migration `004_bookmark_quota.sql` checks the stored 100-bookmark quota under a parent-lesson row lock. Both imports and manual inserts use this database invariant. An overflowing import transaction rolls back its bookmarks, notes and import marker together. Duplicate IDs remain harmless, even at capacity. Existing records are preserved.
+- **YT-03:** The workspace returns the latest 1,000 history lessons plus all older saved, completed, noted, bookmarked and collection lessons. The PostgreSQL regression creates 1,100 newer history rows and verifies that retained older lessons are still returned without duplicates.
+
+Validation completed locally:
+
+- `npm run check` and `npm run build` passed.
+- **32 Node tests passed**, including real PostgreSQL 16 import rollback, concurrent last-slot writes and workspace retention checks.
+- **All 35 Python tests passed**, including the pinned ONNX semantic-model tests.
+- CI now provisions disposable PostgreSQL 16 and sets `TEST_DATABASE_URL` so the database regressions run on every push and pull request. Without that setting, the local database test is explicitly skipped.
+
+No production records or deployments were changed. The build was run without production database/auth credentials; real managed-auth preview verification and desktop/mobile browser coverage were not run for this change. Apply the additive migration through the normal build before serving the updated application.

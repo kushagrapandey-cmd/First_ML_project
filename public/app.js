@@ -56,7 +56,7 @@ let positions = read('ytguide.positions.v3',{});
 let bookmarks = read('ytguide.bookmarks.v3',{});
 let collections = read('ytguide.collections.v3',[]);
 let memberships = read('ytguide.memberships.v3',{});
-let noteVersions = {};
+let noteVersions = read('ytguide.noteVersions.v3',{});
 function normalizeWorkspace(){
   const object=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
   saved=Array.isArray(saved)?saved.filter(validVideo).slice(0,300):[];
@@ -75,8 +75,6 @@ let playerInstance = null;
 let playerReady = false;
 let playerApiPromise;
 let lastPositionSaved = 0;
-let noteDebounce;
-let noteDirty=false;
 function emitMutation(action,payload) { if(!authenticated)return; window.dispatchEvent(new CustomEvent('ytguide:mutation',{detail:{action,...payload}})); }
 function remember(video) {if(authenticated&&validVideo(video)){lessonIndex[video.id]=video;write('ytguide.lessons.v3',lessonIndex);}}
 const stamp = seconds => `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
@@ -194,7 +192,6 @@ async function findLessons(event) {
 function openLesson(video) {
   if (!validVideo(video)) return;
   currentVideo = video;
-  noteDirty=false;
   remember(video);
   emitMutation('lesson',{video,patch:{}});
   $('#lesson-title').textContent = video.title;
@@ -213,7 +210,7 @@ function openLesson(video) {
   $('#lesson-dialog').showModal();
 }
 $('#lesson-dialog').addEventListener('close', () => {
-  if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}
+  window.dispatchEvent(new Event('ytguide:flush-sync'));
   savePosition(true);
   if(playerInstance){try{playerInstance.destroy();}catch{} playerInstance=null;}
   playerReady=false;
@@ -227,13 +224,12 @@ $('#lesson-notes').addEventListener('input', () => {
   if (!Object.hasOwn(notes,currentVideo.id) && Object.keys(notes).length >= 300) {
     $('#note-status').textContent = 'Notes limit reached. Export your existing notes first.'; return;
   }
-  noteDirty=true;
   notes[currentVideo.id] = $('#lesson-notes').value;
   const stored = write('ytguide.notes.v2', notes);
   $('#note-status').textContent = stored ? (storageScope==='guest'?'Saved on this device ✓':'Saved locally · cloud sync pending') : 'Not saved. Copy or export your notes before leaving.';
   const video={...currentVideo}; const content=notes[video.id];
-  clearTimeout(noteDebounce);
-  noteDebounce=setTimeout(()=>{emitMutation('note',{video,content});if(currentVideo?.id===video.id&&notes[video.id]===content)noteDirty=false;},700);
+  // Queue durably on every edit; only the network request is debounced.
+  emitMutation('note',{video,content});
   updateWorkspace();
 });
 $('#save-lesson').addEventListener('click', () => toggleSave(currentVideo));
@@ -329,16 +325,15 @@ window.YTGuide = {
   get video(){return currentVideo;},
   get state(){return {saved,completed,notes,lessonIndex,positions,bookmarks,collections,memberships};},
   getNoteVersion:id=>noteVersions[id]||0,
-  setNoteVersion:(id,version)=>{noteVersions[id]=version;},
+  setNoteVersion:(id,version)=>{noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);},
   conflict:(id,note)=>{noteConflicts[id]=note;renderNoteConflict();},
   setScope(scope) {
-    clearTimeout(noteDebounce);
     if($('#lesson-dialog').open)$('#lesson-dialog').close();
     storageScope=scope;
     authenticated=false;
     saved=read('ytguide.saved.v2',[]);completed=read('ytguide.completed.v2',[]);notes=read('ytguide.notes.v2',{});
     lessonIndex=read('ytguide.lessons.v3',{});positions=read('ytguide.positions.v3',{});bookmarks=read('ytguide.bookmarks.v3',{});collections=read('ytguide.collections.v3',[]);memberships=read('ytguide.memberships.v3',{});
-    noteVersions={};noteConflicts={};normalizeWorkspace();
+    noteVersions=read('ytguide.noteVersions.v3',{});noteConflicts={};normalizeWorkspace();
     updateWorkspace();renderResults();
   },
   applyCloud(data) {
@@ -348,6 +343,7 @@ window.YTGuide = {
     positions=Object.fromEntries(data.lessons.map(r=>[r.video_id,r.position_seconds]));
     notes=Object.fromEntries(data.notes.map(r=>[r.video_id,r.content]));
     noteVersions=Object.fromEntries(data.notes.map(r=>[r.video_id,r.version]));
+    write('ytguide.noteVersions.v3',noteVersions);
     collections=data.collections;bookmarks={};memberships={};
     for(const b of data.bookmarks)(bookmarks[b.video_id]||=[]).push(b);
     for(const m of data.memberships)(memberships[m.video_id]||=[]).push(m.collection_id);
@@ -355,10 +351,10 @@ window.YTGuide = {
     updateWorkspace();renderResults();
   },
   noteSynced(id,content,version) {
-    noteVersions[id]=version;
+    noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);
     if(currentVideo?.id===id&&notes[id]===content)$('#note-status').textContent='Cloud synced ✓';
   },
-  flushNote(){if(currentVideo&&noteDirty){clearTimeout(noteDebounce);emitMutation('note',{video:currentVideo,content:notes[currentVideo.id]||''});noteDirty=false;}},
+  flushNote(){window.dispatchEvent(new Event('ytguide:flush-sync'));},
 };
 const hadSearchContext=new URLSearchParams(location.search).has('topic');
 restoreNavigation();
@@ -474,12 +470,12 @@ function renderNoteConflict(){
 }
 $('#use-cloud-note').addEventListener('click',()=>{
   if(!currentVideo)return;const id=currentVideo.id;const c=noteConflicts[id];if(!c)return;
-  notes[id]=c.content;noteVersions[id]=c.version;delete noteConflicts[id];write('ytguide.notes.v2',notes);$('#lesson-notes').value=notes[id];renderNoteConflict();
+  notes[id]=c.content;noteVersions[id]=c.version;write('ytguide.noteVersions.v3',noteVersions);delete noteConflicts[id];write('ytguide.notes.v2',notes);$('#lesson-notes').value=notes[id];renderNoteConflict();
   window.dispatchEvent(new CustomEvent('ytguide:resolve-note',{detail:{id,replace:false}}));
 });
 $('#keep-my-note').addEventListener('click',()=>{
   if(!currentVideo)return;const id=currentVideo.id;const c=noteConflicts[id];if(!c)return;
-  noteVersions[id]=c.version;delete noteConflicts[id];renderNoteConflict();
+  noteVersions[id]=c.version;write('ytguide.noteVersions.v3',noteVersions);delete noteConflicts[id];renderNoteConflict();
   window.dispatchEvent(new CustomEvent('ytguide:resolve-note',{detail:{id,replace:true}}));
 });
 $('#export-backup').addEventListener('click',()=>{
@@ -512,3 +508,4 @@ function youtubeSearchURL(){const topic=$('#topic');return 'https://www.youtube.
 
 function updateGoalRequirement(){const required=$('#topic').value==='custom';$('#goal').required=required;$('#goal-requirement').textContent=required?'Required for this topic':'Optional';}
 function showSearchStart(){$('#result-meta').textContent='';$('#source-notice').textContent='Choose a subject and search when you are ready.';$('#results').innerHTML='<div class="empty-state"><h3>What would you like to understand?</h3><p>Choose a subject or enter your own topic, then select Find my lessons.</p></div>';}
+

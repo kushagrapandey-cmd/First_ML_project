@@ -77,6 +77,8 @@ The current semantic ranker runs an actual pretrained neural sentence model, not
 | API JWT | None | Short-lived, memory only |
 | Video media | Not stored | Not stored |
 
+Every note edit enters the account-scoped persistent outbox immediately; the 700 ms debounce delays only the network request. The draft and its cloud version survive reload, and a newer cloud note still requires explicit conflict resolution.
+
 Cloud data is applied only after the account API responds successfully. Saving is locked while authentication is unresolved or expired. Normal sign-out clears synced account caches; pending writes can be retained with an explicit warning for recovery. Browser caches are not encrypted.
 
 ## Development and verification
@@ -97,7 +99,7 @@ npm run dev
 
 The Python local server serves static assets/recommendations, not Node account functions. Use a provisioned Vercel preview to test real managed authentication/database boundaries. Do not copy production credentials into source code.
 
-The build applies additive database migrations when `DATABASE_URL` is available. Preview builds run `scripts/verify-cloud.mjs` with isolated synthetic fixture users, test ownership/conflicts/CRUD, and clean up fixture records. It skips production. Unit/DOM tests use mocked services and do not by themselves establish real cloud success.
+The build applies additive database migrations when `DATABASE_URL` is available. Migration `004_bookmark_quota.sql` enforces the 100-bookmark limit per lesson for both manual saves and imports, with a parent-row lock for concurrent requests. An overflowing import batch is rejected atomically; guest originals stay available. Existing records are never pruned. Workspace loading keeps the latest 1,000 history lessons plus every saved, completed, noted, bookmarked or collection lesson, regardless of age. Preview builds run `scripts/verify-cloud.mjs` with isolated synthetic fixture users, test ownership/conflicts/CRUD, and clean up fixture records. It skips production. Unit/DOM tests use mocked services and do not by themselves establish real cloud success. `tests/workspace-db.test.mjs` runs against real PostgreSQL when `TEST_DATABASE_URL` points to a disposable test database; it creates and drops its own schema. CI provisions PostgreSQL 16 and runs these tests, including concurrent writes and import rollback. Never use a production URL for this setting.
 
 Required server settings: `DATABASE_URL`, `NEON_AUTH_BASE_URL`. Optional: `YOUTUBE_API_KEY`. No secret is returned by the public readiness endpoint.
 
@@ -178,3 +180,4 @@ The footer links to Kushagra's LinkedIn, GitHub and `kushagrapandey102@gmail.com
 Set server-only `RESEND_API_KEY` to a dedicated sending-only key in Vercel Production. The current `onboarding@resend.dev` sender delivers only to the Resend account owner's configured address; it is not a general outbound mail service. Configure a verified sender before changing the recipient/use case. No visitor API key or mail-client launch is needed.
 
 Migration `db/003_feedback.sql` adds shared counters: three attempts per address bucket per 15-minute window and 20 attempts per UTC day globally. Expired counter rows are removed after two days during submissions. HMAC identifiers are stored instead of raw addresses; feedback bodies and reply addresses are not stored in application tables. Resend and the recipient mailbox process the email. Origin checks, bounded JSON, validation and a honeypot provide additional abuse controls, not a guarantee against bots. Provider failure returns an actionable error and direct email remains available.
+

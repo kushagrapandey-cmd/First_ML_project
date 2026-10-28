@@ -144,3 +144,99 @@ test('Empty-result YouTube link encodes the actual topic and question',async()=>
  try{w.fetch=async()=>({ok:true,json:async()=>({videos:[],notice:'No match',candidates:0})});$('#goal').value='SQL joins';$('#search-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setImmediate(r));const href=$('#results a').href;assert.ok(href.startsWith('https://www.youtube.com/results?'));assert.match(href,/SQL\+joins/);assert.ok(!href.includes('escapeHtml'));}
  finally{dom.window.close();}
 });
+
+
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+async function noteAccount(storage={},cloudContent='Cloud original',version=7,offlineInitially=false){
+  const p=await page();const {w}=p;
+  for(const [key,value] of Object.entries(storage))w.localStorage.setItem(key,value);
+  const posts=[];
+  const workspace={lessons:[{video_id:lesson.id,metadata:lesson,saved:true,completed:false,position_seconds:0}],notes:[{video_id:lesson.id,content:cloudContent,version}],collections:[],bookmarks:[],memberships:[]};
+  w.testClient={getSession:async()=>({data:{user:{id:'note-user',name:'Notes'}}}),token:async()=>({data:{token:'fixture'}})};
+  let offline=offlineInitially;
+  w.fetch=async(url,options)=>{
+    if(url.includes('action=config'))return {ok:true,json:async()=>({accountsConfigured:true})};
+    if(options?.method==='POST'){
+      const body=JSON.parse(options.body);posts.push(body);
+      if(offline)throw new Error('Offline');
+      if(body.action==='note'){
+        if(body.version!==version)return {ok:false,status:409,json:async()=>({note:{content:cloudContent,version}})};
+        cloudContent=body.content;version++;
+        return {ok:true,json:async()=>({note:{content:cloudContent,version}})};
+      }
+      return {ok:true,json:async()=>({ok:true})};
+    }
+    return {ok:true,json:async()=>({workspace})};
+  };
+  await w.eval(accountScript.replace("await import('/auth-sdk.js')",'({createClient:()=>window.testClient})'));
+  await tick();return {...p,posts,offline:()=>{offline=true;}};
+}
+test('Reload before the note debounce preserves a durable account-scoped draft and its base version',async()=>{
+  const first=await noteAccount();let storage;
+  try{
+    first.$('[data-watch]').click();await tick();first.posts.length=0;
+    for(const value of ['New','Newest local draft']){
+      first.$('#lesson-notes').value=value;
+      first.$('#lesson-notes').dispatchEvent(new first.w.Event('input',{bubbles:true}));
+    }
+    const queued=JSON.parse(first.w.localStorage.getItem('user:note-user:ytguide.pending.v3'));
+    assert.equal(queued.length,1);assert.equal(queued[0].content,'Newest local draft');assert.equal(queued[0].version,7);
+    assert.equal(first.posts.length,0,'Network sends remain debounced');
+    storage=Object.fromEntries(Object.entries(first.w.localStorage));
+  }finally{first.dom.window.close();}
+  const next=await noteAccount(storage);
+  try{
+    assert.equal(next.w.YTGuide.state.notes[lesson.id],'Newest local draft');
+    assert.equal(JSON.parse(next.w.localStorage.getItem('user:note-user:ytguide.notes.v2'))[lesson.id],'Newest local draft');
+    assert.equal(next.posts.find(p=>p.action==='note').version,7);
+    assert.equal(JSON.parse(next.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,0);
+    assert.equal(next.w.YTGuide.getNoteVersion(lesson.id),8);
+  }finally{next.dom.window.close();}
+});
+test('A reloaded draft keeps its local text and exposes a genuine newer-cloud conflict',async()=>{
+  const storage={
+    'user:note-user:ytguide.notes.v2':JSON.stringify({[lesson.id]:'Local draft'}),
+    'user:note-user:ytguide.lessons.v3':JSON.stringify({[lesson.id]:lesson}),
+    'user:note-user:ytguide.pending.v3':JSON.stringify([{action:'note',video:lesson,content:'Local draft',version:7}])
+  };
+  const p=await noteAccount(storage,'Changed on another device',8);
+  try{
+    assert.equal(p.w.YTGuide.state.notes[lesson.id],'Local draft');
+    assert.equal(JSON.parse(p.w.localStorage.getItem('user:note-user:ytguide.pending.v3'))[0].blocked,true);
+    p.$('[data-watch]').click();await tick();
+    assert.equal(p.$('#lesson-notes').value,'Local draft');
+    assert.equal(p.$('#note-conflict').hidden,false);
+    p.$('#use-cloud-note').click();await tick();
+    assert.equal(p.w.YTGuide.state.notes[lesson.id],'Changed on another device');
+  }finally{p.dom.window.close();}
+});
+test('An empty note draft survives reload without resurrecting deleted text',async()=>{
+  const first=await noteAccount();let storage;
+  try{
+    first.$('[data-watch]').click();await tick();
+    first.$('#lesson-notes').value='';first.$('#lesson-notes').dispatchEvent(new first.w.Event('input'));
+    storage=Object.fromEntries(Object.entries(first.w.localStorage));
+  }finally{first.dom.window.close();}
+  const p=await noteAccount(storage);
+  try{assert.equal(p.w.YTGuide.state.notes[lesson.id],'');assert.equal(p.posts.find(p=>p.action==='note').content,'');}
+  finally{p.dom.window.close();}
+});
+
+test('Offline reload keeps a pending draft until a later online retry',async()=>{
+  const storage={
+    'user:note-user:ytguide.notes.v2':JSON.stringify({[lesson.id]:'Offline draft'}),
+    'user:note-user:ytguide.lessons.v3':JSON.stringify({[lesson.id]:lesson}),
+    'user:note-user:ytguide.pending.v3':JSON.stringify([{action:'note',video:lesson,content:'Offline draft',version:7}])
+  };
+  const offline=await noteAccount(storage,'Cloud original',7,true);let retryStorage;
+  try{
+    assert.equal(offline.w.YTGuide.state.notes[lesson.id],'Offline draft');
+    assert.equal(JSON.parse(offline.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,1);
+    retryStorage=Object.fromEntries(Object.entries(offline.w.localStorage));
+  }finally{offline.dom.window.close();}
+  const online=await noteAccount(retryStorage);
+  try{
+    assert.equal(online.posts.find(p=>p.action==='note').content,'Offline draft');
+    assert.equal(JSON.parse(online.w.localStorage.getItem('user:note-user:ytguide.pending.v3')).length,0);
+  }finally{online.dom.window.close();}
+});
