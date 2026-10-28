@@ -4,7 +4,7 @@
   const api=window.YTGuide;
   const $=s=>document.querySelector(s);
   let client,user=null,mode='signin',queue=[],working=false,sessionExpired=false,epoch=0,lastError='',generation=0;
-  let accountReady=false;
+  let accountReady=false,syncDebounce;
   const pendingKey='ytguide.pending.v3';
   const message=text=>{$('#account-message').textContent=text;};
   const saveQueue=()=>api.write(pendingKey,queue);
@@ -81,7 +81,9 @@
     const merge=queue.find((q,index)=>!(working&&index===0)&&q.action===body.action&&q.video?.id===body.video?.id&&['note','lesson'].includes(q.action));
     if(merge){if(body.action==='note')merge.content=body.content;else Object.assign(merge.patch,body.patch);}
     else queue.push({...body,operationId:crypto.randomUUID()});
-    saveQueue();status();processQueue();
+    saveQueue();status();
+    if(body.action==='note'){clearTimeout(syncDebounce);syncDebounce=setTimeout(processQueue,700);}
+    else processQueue();
   }
   async function processQueue(){
     if(working||!user||sessionExpired||!queue.length)return;
@@ -113,6 +115,7 @@
       }
     }finally{working=false;status();}
   }
+  window.addEventListener('ytguide:flush-sync',()=>{clearTimeout(syncDebounce);processQueue();});
   window.addEventListener('ytguide:mutation',event=>enqueue({...event.detail}));
   window.addEventListener('ytguide:resolve-note',event=>{
     const {id,replace}=event.detail;
@@ -228,3 +231,4 @@
   }
   await initialiseAccount();
 })();
+

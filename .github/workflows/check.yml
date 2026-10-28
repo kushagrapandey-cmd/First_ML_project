@@ -5,6 +5,20 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ytguide
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: ytguide_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ytguide -d ytguide_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://ytguide:test-only@localhost:5432/ytguide_test
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -23,3 +37,4 @@ jobs:
       - run: npm run check
       - run: npm run test:server
       - run: npm run build
+
