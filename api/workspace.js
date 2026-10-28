@@ -67,7 +67,7 @@ async function mutate(user,body,runAsUser=asUser) {
   }
   if(action==='createCollection') {
     const id=uuid(body.id); const name=text(body.name,60,'collection name',false).trim();
-    const [rows]=await runAsUser(user.id,sql=>[sql`INSERT INTO study_collections(user_id,id,name) SELECT ${user.id},${id}::uuid,${name} WHERE (SELECT count(*) FROM study_collections WHERE user_id=${user.id})<50 ON CONFLICT DO NOTHING RETURNING id,name`]);
+    const [rows]=await runAsUser(user.id,sql=>[sql`INSERT INTO study_collections(user_id,id,name) VALUES(${user.id},${id}::uuid,${name}) ON CONFLICT DO NOTHING RETURNING id,name`]);
     if(!rows.length)throw new HttpError(409,'This collection name already exists, or your 50-collection limit was reached.');
     return {ok:true,collection:rows[0]};
   }
@@ -123,7 +123,7 @@ async function importGuest(user,body,runAsUser) {
   if(prior.length)return {ok:true,alreadyImported:true};
   await runAsUser(user.id,sql=>{
     const queries=[];
-    for(const c of collections)queries.push(sql`INSERT INTO study_collections(user_id,id,name) SELECT ${user.id},${c.id}::uuid,${c.name} WHERE (SELECT count(*) FROM study_collections WHERE user_id=${user.id})<50 ON CONFLICT DO NOTHING`);
+    for(const c of collections)queries.push(sql`INSERT INTO study_collections(user_id,id,name) VALUES(${user.id},${c.id}::uuid,${c.name}) ON CONFLICT DO NOTHING`);
     for(const r of lessons) {
       queries.push(sql`INSERT INTO learner_lessons(user_id,video_id,metadata,saved,completed,position_seconds) VALUES(${user.id},${r.video.id},${JSON.stringify(r.video)}::jsonb,${r.saved},${r.completed},${r.position})
         ON CONFLICT(user_id,video_id) DO UPDATE SET saved=learner_lessons.saved OR EXCLUDED.saved,completed=learner_lessons.completed OR EXCLUDED.completed,position_seconds=GREATEST(learner_lessons.position_seconds,EXCLUDED.position_seconds),updated_at=now()`);
