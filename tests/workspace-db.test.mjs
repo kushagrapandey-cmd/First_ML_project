@@ -30,7 +30,7 @@ test('Workspace quotas, atomic imports and retained lessons in PostgreSQL',{skip
     const client=await pool.connect();
     try{
       await client.query(`SET search_path TO ${schema},public`);
-      for(const file of ['001_workspace.sql','004_bookmark_quota.sql'])await client.query(await readFile(new URL('../db/'+file,import.meta.url),'utf8'));
+      for(const file of ['001_workspace.sql','004_bookmark_quota.sql','005_collection_quota.sql'])await client.query(await readFile(new URL('../db/'+file,import.meta.url),'utf8'));
       await client.query('INSERT INTO learner_profiles(user_id,display_name) VALUES($1,$2)',[user.id,user.name]);
     }finally{await client.query('RESET search_path');client.release();}
     await t.test('Repeated imports cannot exceed 100; failure rolls back the entire batch',async()=>{
@@ -52,6 +52,30 @@ test('Workspace quotas, atomic imports and retained lessons in PostgreSQL',{skip
         mutate(user,{action:'bookmark',video:lesson,...bookmarks(1)[0]},asUser)
       ]);
       assert.equal(await count(),100);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+    });
+    await t.test('Concurrent creation and import cannot exceed 50 collections',async()=>{
+      const quotaUser={id:'quota-user',name:'Quota'};
+      await asUser(quotaUser.id,s=>[s`INSERT INTO learner_profiles(user_id,display_name) VALUES(${quotaUser.id},${quotaUser.name})`,s`INSERT INTO study_collections(user_id,id,name) SELECT ${quotaUser.id},md5(i::text)::uuid,'Collection '||i FROM generate_series(1,49) i`]);
+      const results=await Promise.allSettled([
+        mutate(quotaUser,{action:'createCollection',id:randomUUID(),name:'Last manual'},asUser),
+        mutate(quotaUser,{action:'import',id:randomUUID(),lessons:[],collections:[{id:randomUUID(),name:'Last import'}]},asUser)
+      ]);
+      const [[row]]=await asUser(quotaUser.id,s=>[s`SELECT count(*) AS n FROM study_collections WHERE user_id=${quotaUser.id}`]);
+      assert.equal(Number(row.n),50);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+    });
+    await t.test('Workspace CRUD remains isolated between two learners',async()=>{
+      const other={id:'second-user',name:'Second'};
+      await asUser(other.id,s=>[s`INSERT INTO learner_profiles(user_id,display_name) VALUES(${other.id},${other.name})`]);
+      await mutate(user,{action:'note',video:lesson,content:'Private note',version:0},asUser);
+      const updated=await mutate(user,{action:'note',video:lesson,content:'Updated note',version:1},asUser);assert.equal(updated.note.version,2);
+      const conflict=await mutate(user,{action:'note',video:lesson,content:'Stale note',version:1},asUser);assert.equal(conflict.conflict,true);
+      const id=randomUUID();await mutate(user,{action:'createCollection',id,name:'Private'},asUser);
+      await assert.rejects(mutate(other,{action:'renameCollection',id,name:'Stolen'},asUser),e=>e.status===404);
+      await mutate(other,{action:'deleteCollection',id},asUser);await mutate(user,{action:'renameCollection',id,name:'Renamed'},asUser);
+      await mutate(user,{action:'membership',video:lesson,collectionId:id,add:true},asUser);
+      assert.equal((await load(other,asUser)).notes.length,0);assert.equal((await load(other,asUser)).lessons.length,0);
+      await mutate(user,{action:'membership',video:lesson,collectionId:id,add:false},asUser);await mutate(user,{action:'deleteCollection',id},asUser);
+      const own=await load(user,asUser);assert.equal(own.collections.length,0);assert.equal(own.memberships.length,0);
     });
     await t.test('Newer history cannot hide old saved, completed, noted, bookmarked or collection lessons',async()=>{
       await asUser(user.id,s=>[

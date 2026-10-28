@@ -5,9 +5,9 @@ export function createClient(){
     try{
       const response=await fetch('/api/auth/'+path,{method:body===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
       const data=await response.json();
-      if(!response.ok)return {data:null,error:{code:data?.code,message:data?.message||data?.error||'Account request failed. Please try again.'}};
+      if(!response.ok)return {data:null,error:{status:response.status,code:data?.code,message:data?.message||data?.error||'Account request failed. Please try again.'}};
       return {data,error:null};
-    }catch(error){return {data:null,error:{message:error.name==='TimeoutError'?'Account request timed out. Please retry.':'Could not connect to your account. Check your connection and retry.'}};}
+    }catch(error){return {data:null,error:{status:0,message:error.name==='TimeoutError'?'Account request timed out. Please retry.':'Could not connect to your account. Check your connection and retry.'}};}
   }
   return {
     getSession:()=>call('get-session?disableCookieCache=true'),
@@ -18,3 +18,4 @@ export function createClient(){
     emailOtp:{sendVerificationOtp:body=>call('email-otp/send-verification-otp',body),verifyEmail:body=>call('email-otp/verify-email',body),resetPassword:body=>call('email-otp/reset-password',body)}
   };
 }
+

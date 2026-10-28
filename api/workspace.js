@@ -67,7 +67,7 @@ async function mutate(user,body,runAsUser=asUser) {
   }
   if(action==='createCollection') {
     const id=uuid(body.id); const name=text(body.name,60,'collection name',false).trim();
-    const [rows]=await runAsUser(user.id,sql=>[sql`INSERT INTO study_collections(user_id,id,name) SELECT ${user.id},${id}::uuid,${name} WHERE (SELECT count(*) FROM study_collections WHERE user_id=${user.id})<50 ON CONFLICT DO NOTHING RETURNING id,name`]);
+    const [rows]=await runAsUser(user.id,sql=>[sql`INSERT INTO study_collections(user_id,id,name) VALUES(${user.id},${id}::uuid,${name}) ON CONFLICT DO NOTHING RETURNING id,name`]);
     if(!rows.length)throw new HttpError(409,'This collection name already exists, or your 50-collection limit was reached.');
     return {ok:true,collection:rows[0]};
   }
@@ -111,18 +111,19 @@ async function importGuest(user,body,runAsUser) {
   const importId=uuid(body.id);
   if(!Array.isArray(body.lessons)||body.lessons.length>25||!Array.isArray(body.collections)||body.collections.length>50)throw new HttpError(400,'Invalid import batch.');
   const lessons=body.lessons.map(row=>{
+    if(!row||typeof row!=='object'||Array.isArray(row))throw new HttpError(400,'Invalid imported lesson.');
     const v=video(row.video);
     if(typeof row.saved!=='boolean'||typeof row.completed!=='boolean')throw new HttpError(400,'Invalid imported state.');
     const content=text(row.note??'',8000,'imported note');
     if(!Array.isArray(row.bookmarks)||row.bookmarks.length>100||!Array.isArray(row.collections)||row.collections.length>50)throw new HttpError(400,'Invalid imported lesson.');
     return {...row,video:v,note:content,position:integer(row.position??0,0,604800,'position'),bookmarks:row.bookmarks.map(b=>({id:uuid(b.id),seconds:integer(b.seconds,0,604800,'timestamp'),label:text(b.label,200,'bookmark',false)})),collections:row.collections.map(n=>text(n,60,'collection name',false))};
   });
-  const collections=body.collections.map(c=>({id:uuid(c.id),name:text(c.name,60,'collection name',false)}));
+  const collections=body.collections.map(c=>{if(!c||typeof c!=='object')throw new HttpError(400,'Invalid imported collection.');return {id:uuid(c.id),name:text(c.name,60,'collection name',false)};});
   const [prior]=await runAsUser(user.id,sql=>[sql`SELECT import_id FROM workspace_imports WHERE user_id=${user.id} AND import_id=${importId}::uuid`]);
   if(prior.length)return {ok:true,alreadyImported:true};
   await runAsUser(user.id,sql=>{
     const queries=[];
-    for(const c of collections)queries.push(sql`INSERT INTO study_collections(user_id,id,name) SELECT ${user.id},${c.id}::uuid,${c.name} WHERE (SELECT count(*) FROM study_collections WHERE user_id=${user.id})<50 ON CONFLICT DO NOTHING`);
+    for(const c of collections)queries.push(sql`INSERT INTO study_collections(user_id,id,name) VALUES(${user.id},${c.id}::uuid,${c.name}) ON CONFLICT DO NOTHING`);
     for(const r of lessons) {
       queries.push(sql`INSERT INTO learner_lessons(user_id,video_id,metadata,saved,completed,position_seconds) VALUES(${user.id},${r.video.id},${JSON.stringify(r.video)}::jsonb,${r.saved},${r.completed},${r.position})
         ON CONFLICT(user_id,video_id) DO UPDATE SET saved=learner_lessons.saved OR EXCLUDED.saved,completed=learner_lessons.completed OR EXCLUDED.completed,position_seconds=GREATEST(learner_lessons.position_seconds,EXCLUDED.position_seconds),updated_at=now()`);
@@ -149,6 +150,7 @@ export default async function handler(req,res) {
     return respond(res,result.conflict?409:200,result);
   }catch(error){
     if(error.code==='23514'&&error.constraint==='bookmark_lesson_limit')return respond(res,409,{error:'The 100-bookmark lesson limit was reached. This change was not saved; any guest import originals remain on this device.'});
+    if(error.code==='23514'&&error.constraint==='study_collection_limit')return respond(res,409,{error:'The 50-collection limit was reached. This change was not saved.'});
     if(error.code==='23505')return respond(res,409,{error:'This name or record already exists.'});
     if(error instanceof HttpError)return respond(res,error.status,{error:error.message});
     console.error('workspace_request_failed',error.code||error.name);

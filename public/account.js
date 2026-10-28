@@ -5,9 +5,37 @@
   const $=s=>document.querySelector(s);
   let client,user=null,mode='signin',queue=[],working=false,sessionExpired=false,epoch=0,lastError='',generation=0;
   let accountReady=false,syncDebounce;
-  const pendingKey='ytguide.pending.v3';
+  const pendingKey='ytguide.pending.v3',operationPrefix='ytguide.operation.v4.';
+  const tabId=crypto.randomUUID(),volatileItems=new Map();
+  let syncTask=null,activeOperation=null,lastCreated=0;
+  function readQueue(){
+    const legacy=api.read(pendingKey,[]);
+    if(Array.isArray(legacy)&&legacy.length){
+      let migrated=true;
+      for(const [i,item] of legacy.entries()){
+        const op={...item,operationId:item.operationId||'legacy-'+i,createdAt:item.createdAt||i};
+        if(!api.write(operationPrefix+op.operationId,op))migrated=false;
+      }
+      if(migrated)api.write(pendingKey,[]);
+    }
+    const prefix=api.scope+':'+operationPrefix,items=[];
+    let keys=[];try{keys=Object.keys(localStorage);}catch{}
+    for(const key of keys)if(key.startsWith(prefix)){
+      const item=api.read(key.slice(api.scope.length+1),null);
+      if(item&&typeof item.operationId==='string'&&typeof item.action==='string')items.push(item);
+    }
+    for(const [key,item] of volatileItems)if(key.startsWith(prefix)){const index=items.findIndex(q=>q.operationId===item.operationId);if(index>=0)items[index]=item;else items.push(item);}
+    return items.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)||a.operationId.localeCompare(b.operationId));
+  }
+  const saveItem=item=>{
+    const key=api.scope+':'+operationPrefix+item.operationId;
+    if(api.write(operationPrefix+item.operationId,item)){volatileItems.delete(key);return true;}
+    volatileItems.set(key,item);lastError='Device storage unavailable · keep this tab open until synced';return false;
+  };
+  const removeItem=item=>{const key=api.scope+':'+operationPrefix+item.operationId;localStorage.removeItem(key);volatileItems.delete(key);};
+  window.addEventListener('beforeunload',event=>{if(volatileItems.size){event.preventDefault();event.returnValue='';}});
+
   const message=text=>{$('#account-message').textContent=text;};
-  const saveQueue=()=>api.write(pendingKey,queue);
   function status(){
     const cloud=!!user;
     $('#storage-label').textContent=cloud?'Account workspace · cloud sync':'Browse freely · sign in to save';
@@ -47,11 +75,17 @@
   window.addEventListener('ytguide:signin',openAccount);
   async function token(){
     const result=await client.token();
-    if(result.error||!result.data?.token)throw Object.assign(new Error('Sign in again to resume cloud sync.'),{status:401});
+    if(result.error)throw Object.assign(new Error(result.error.message||'Account connection unavailable. Retry when online.'),{status:result.error.status||503});
+    if(!result.data?.token)throw Object.assign(new Error('Sign in again to resume cloud sync.'),{status:401});
+    let subject;
+    try{subject=JSON.parse(atob(result.data.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub;}catch{}
+    if(subject!==user?.id)throw Object.assign(new Error('The signed-in account changed. Reopen Sign in to reconnect safely.'),{status:401});
     return result.data.token;
   }
   async function cloud(body){
+    const identity=user?.id,ownGeneration=generation;
     const bearer=await token();
+    if(identity!==user?.id||ownGeneration!==generation)throw Object.assign(new Error('Account changed. Reconnect to continue.'),{status:401});
     const response=await fetch('/api/workspace',{method:body?'POST':'GET',headers:{Authorization:'Bearer '+bearer,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(25000)});
     const result=await response.json();
     if(!response.ok)throw Object.assign(new Error(result.error||'Cloud update failed.'),{status:response.status,result});
@@ -61,65 +95,80 @@
     if(!user||working||queue.length||$('#lesson-dialog').open)return;
     const requestEpoch=epoch,identity=user.id;
     try{const result=await cloud();if(identity===user?.id&&requestEpoch===epoch&&!queue.length){api.applyCloud(result.workspace);lastError='';status();}}
-    catch(error){lastError=error.message;if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}status();}
+    catch(error){if(identity!==user?.id||requestEpoch!==epoch)return;lastError=error.message;if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}status();}
   }
   async function connect(nextUser){
     const changed=user?.id!==nextUser.id;user=nextUser;sessionExpired=false;lastError='';generation++;api.setAuthenticated(false);
-    if(changed){api.setScope('user:'+user.id);queue=api.read(pendingKey,[]);if(!Array.isArray(queue))queue=[];}
-    const identity=user.id;
+    if(changed){api.setScope('user:'+user.id);queue=readQueue();}
+    const identity=user.id,ownGeneration=generation;
     const result=await cloud();
-    if(user?.id!==identity)return;
-    if(!queue.length)api.applyCloud(result.workspace);
-    else for(const n of result.workspace.notes)if(!queue.some(q=>q.action==='note'&&q.video.id===n.video_id))api.setNoteVersion(n.video_id,n.version);
+    if(user?.id!==identity||generation!==ownGeneration)return;
+    queue=readQueue();for(const item of queue)if(item.retryAt){delete item.retryAt;saveItem(item);}api.applyCloud(result.workspace,queue);
     for(const item of queue.filter(q=>q.blocked)){const latest=result.workspace.notes.find(n=>n.video_id===item.video.id);if(latest)api.conflict(item.video.id,latest);}
     api.setAuthenticated(true);status();processQueue();
   }
   function enqueue(body){
     if(!user)return;
-    epoch++;
-    if(body.action==='note')body.version=api.getNoteVersion(body.video.id);
-    const merge=queue.find((q,index)=>!(working&&index===0)&&q.action===body.action&&q.video?.id===body.video?.id&&['note','lesson'].includes(q.action));
+    queue=readQueue();epoch++;
+    if(body.action==='note')body.version=Math.max(api.getNoteVersion(body.video.id),...queue.filter(q=>q.owner===tabId&&q.action==='note'&&q.video.id===body.video.id).map(q=>q.version));
+    const merge=queue.find((q,index)=>!q.sending&&q.operationId!==activeOperation&&q.owner===tabId&&q.action===body.action&&q.video?.id===body.video?.id&&['note','lesson'].includes(q.action));
     if(merge){if(body.action==='note')merge.content=body.content;else Object.assign(merge.patch,body.patch);}
-    else queue.push({...body,operationId:crypto.randomUUID()});
-    saveQueue();status();
+    else queue.push({...body,operationId:crypto.randomUUID(),owner:tabId,createdAt:(lastCreated=Math.max(Date.now(),lastCreated+1))});
+    const pending=merge||queue.at(-1);saveItem(pending);status();
     if(body.action==='note'){clearTimeout(syncDebounce);syncDebounce=setTimeout(processQueue,700);}
     else processQueue();
   }
-  async function processQueue(){
+  function processQueue(){
+    if(syncTask)return syncTask;
+    if(!user||sessionExpired)return Promise.resolve();
+    queue=readQueue();if(!queue.length)return Promise.resolve();
+    const identity=user.id,ownGeneration=generation;
+    const run=()=>identity===user?.id?drainQueue():undefined;
+    syncTask=Promise.resolve().then(()=>navigator.locks?navigator.locks.request('ytguide-sync:'+identity,{ifAvailable:true},lock=>lock&&run()):run()).finally(()=>{syncTask=null;if(user&&generation!==ownGeneration)processQueue();});
+    return syncTask;
+  }
+  async function drainQueue(){
+    queue=readQueue();
     if(working||!user||sessionExpired||!queue.length)return;
     working=true;const identity=user.id,ownGeneration=generation;
     try{
-      while(queue.length&&user?.id===identity&&generation===ownGeneration){
-        const item=queue[0];
+      while(user?.id===identity&&generation===ownGeneration){
+        queue=readQueue();if(!queue.length)break;
+        const item=queue[0];activeOperation=item.operationId;
+        if(item.retryAt>Date.now())break;
         if(item.rejected){lastError='Server rejected a change · discard it or export a backup';break;}
-        if(item.blocked){lastError='Resolve the note conflict in its lesson';break;}
+        if(item.blocked){if(item.conflictNote)api.conflict(item.video.id,item.conflictNote);lastError='Resolve the note conflict in its lesson';break;}
         try{
+          item.sending=true;saveItem(item);
           const result=await cloud(item);
           if(user?.id!==identity||generation!==ownGeneration)return;
+          queue=readQueue();
           if(item.action==='note'){
-            api.noteSynced(item.video.id,item.content,result.note.version);
-            for(const following of queue.slice(1))if(following.action==='note'&&following.video.id===item.video.id&&following.version===item.version)following.version=result.note.version;
+            api.noteSynced(item.video.id,item.content,result.note.version,item.owner===tabId);
+            for(const following of queue.slice(1))if(following.owner===item.owner&&following.action==='note'&&following.video.id===item.video.id&&following.version===item.version){following.version=result.note.version;saveItem(following);}
           }
-          queue.shift();saveQueue();lastError='';
+          removeItem(item);queue=readQueue();lastError='';
         }catch(error){
+          if(user?.id!==identity||generation!==ownGeneration)return;
+          delete item.sending;saveItem(item);
           if(error.status===409&&item.action==='note'&&error.result?.note){
-            const latest=error.result.note;
-            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version);for(const following of queue.slice(1))if(following.action==='note'&&following.video.id===item.video.id&&following.version===item.version)following.version=latest.version;queue.shift();saveQueue();continue;}
-            item.blocked=true;saveQueue();api.conflict(item.video.id,latest);lastError='Note conflict · open the affected lesson';
+            queue=readQueue();const latest=error.result.note;
+            if(latest.content===item.content){api.noteSynced(item.video.id,item.content,latest.version,item.owner===tabId);for(const following of queue.slice(1))if(following.owner===item.owner&&following.action==='note'&&following.video.id===item.video.id&&following.version===item.version){following.version=latest.version;saveItem(following);}removeItem(item);queue=readQueue();continue;}
+            item.blocked=true;item.conflictNote=latest;saveItem(item);api.conflict(item.video.id,latest);lastError='Note conflict · open the affected lesson';
           }else if(error.status===409&&['createCollection','bookmark'].includes(item.action)){
-            const result=await cloud();const exists=item.action==='createCollection'?result.workspace.collections.some(c=>c.id===item.id):result.workspace.bookmarks.some(b=>b.id===item.id);
-            if(exists){queue.shift();saveQueue();continue;}item.rejected=true;saveQueue();lastError=error.message;
-          }else{lastError=error.message;if([400,404,413,415].includes(error.status)){item.rejected=true;saveQueue();}if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}}
+            const result=await cloud();if(user?.id!==identity||generation!==ownGeneration)return;const exists=item.action==='createCollection'?result.workspace.collections.some(c=>c.id===item.id):result.workspace.bookmarks.some(b=>b.id===item.id);
+            if(exists){removeItem(item);queue=readQueue();continue;}item.rejected=true;saveItem(item);lastError=error.message;
+          }else{lastError=error.message;if(![400,401,404,409,413,415].includes(error.status)){item.retryAt=Date.now()+15000;saveItem(item);}if([400,404,409,413,415].includes(error.status)){item.rejected=true;saveItem(item);}if(error.status===401){sessionExpired=true;api.setAuthenticated(false);}}
           break;
         }
       }
-    }finally{working=false;status();}
+    }finally{working=false;activeOperation=null;status();}
   }
   window.addEventListener('ytguide:flush-sync',()=>{clearTimeout(syncDebounce);processQueue();});
   window.addEventListener('ytguide:mutation',event=>enqueue({...event.detail}));
   window.addEventListener('ytguide:resolve-note',event=>{
     const {id,replace}=event.detail;
-    queue=queue.filter(q=>!(q.action==='note'&&q.video.id===id));saveQueue();lastError='';
+    queue=readQueue();for(const item of queue)if(item.action==='note'&&item.video.id===id)removeItem(item);queue=readQueue();lastError='';
     if(replace){const video=api.state.lessonIndex[id];enqueue({action:'note',video,content:api.state.notes[id]||''});}
     else processQueue();status();
   });
@@ -166,24 +215,29 @@
     if(queue.length&&!confirm('Some changes have not synced. They will stay cached on this device for this account. Sign out anyway?'))return;
     try{
       const result=await client.signOut();if(result.error)throw new Error(result.error.message);
-      const oldScope=api.scope,pending=queue.length;
+      const oldScope=api.scope,pending=readQueue().length;
       api.setAuthenticated(false);user=null;generation++;queue=[];lastError='';sessionExpired=false;
       if(!pending){try{for(const key of Object.keys(localStorage))if(key.startsWith(oldScope+':'))localStorage.removeItem(key);}catch{}}
       api.setScope('guest');status();$('#account-dialog').close();api.toast('Signed out. Study activity is locked until you sign in again.');
     }catch(error){api.toast(error.message);}
   });
-  $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else{lastError='';processQueue();}});
+  function retryQueue(){queue=readQueue();for(const item of queue)if(item.retryAt){delete item.retryAt;saveItem(item);}lastError='';processQueue();}
+  $('#sync-retry').addEventListener('click',()=>{if(sessionExpired)openAccount();else retryQueue();});
   $('#sync-discard').addEventListener('click',async()=>{
     if(!queue[0]?.rejected||!confirm('Discard the server-rejected change? Export a workspace backup first if you want to keep a separate copy.'))return;
-    queue.shift();saveQueue();lastError='';await processQueue();await refresh();status();
+    removeItem(queue[0]);queue=readQueue();lastError='';await processQueue();await refresh();status();
   });
   $('#cloud-refresh').addEventListener('click',()=>{if(queue.length)api.toast('Sync pending changes before refreshing.');else if($('#lesson-dialog').open)api.toast('Close the lesson before refreshing.');else refresh();});
-  window.addEventListener('online',processQueue);
+  window.addEventListener('online',retryQueue);
+  window.addEventListener('storage',event=>{
+    if(user&&event.key?.startsWith(api.scope+':'+operationPrefix)){queue=readQueue();epoch++;status();clearTimeout(syncDebounce);syncDebounce=setTimeout(processQueue,700);}
+  });
   window.addEventListener('focus',async()=>{
     if(!client||!user)return;
     const result=await client.getSession();
-    if(!result.error&&!result.data?.user){api.setAuthenticated(false);user=null;generation++;queue=[];api.setScope('guest');status();return;}
-    if(result.data?.user?.id!==user.id){if(result.data?.user)await connect(result.data.user).catch(()=>{api.setAuthenticated(false);});return;}
+    if(result.error)return;
+    if(!result.data?.user){sessionExpired=true;api.setAuthenticated(false);status();return;}
+    if(sessionExpired||result.data?.user?.id!==user.id){if(result.data?.user)await connect(result.data.user).catch(()=>{api.setAuthenticated(false);});return;}
     if(queue.length)processQueue();else refresh();
   });
   setInterval(()=>{if(queue.length&&!queue[0].blocked)processQueue();},15000);

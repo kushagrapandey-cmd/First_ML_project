@@ -86,6 +86,7 @@ let videos = [];
 let currentVideo = null;
 let currentView = 'discover';
 let request = null;
+let filterDebounce;
 let generation = 0;
 const isSaved = id => saved.some(v => v.id === id);
 const languageLabel = language => ({en:'English', hi:'Hindi'}[language] || 'Language unconfirmed');
@@ -154,8 +155,9 @@ function showView(view, moveFocus = true) {
 async function findLessons(event) {
   event?.preventDefault();
   updateGoalRequirement();
-  if($('#topic').value==='custom'&&!$('#goal').value.trim()){showSearchStart();$('#goal').focus();return;}
+  if($('#topic').value==='custom'&&!$('#goal').value.trim()){request?.abort();generation++;$('#search-button').disabled=false;$('#search-button').innerHTML='Find my lessons <span aria-hidden="true">↗</span>';$('#results').setAttribute('aria-busy','false');showSearchStart();$('#goal').focus();return;}
   persistNavigation();
+  clearTimeout(filterDebounce);
   request?.abort();
   request = new AbortController();
   const ownGeneration = ++generation;
@@ -268,7 +270,7 @@ document.addEventListener('click', (event) => {
   if (button.id === 'load-player' && currentVideo) loadPlayer();
   if (button.id === 'retry-search') findLessons();
   if (button.id === 'clear-filters') {
-    $('#language').value = 'any'; $('#length').value = 'any'; $('#goal').value = ''; findLessons();
+    $('#language').value = 'any'; $('#length').value = 'any'; $('#goal').value = '';if($('#topic').value==='custom')$('#topic').value='python';findLessons();
   }
 });
 $('#search-form').addEventListener('submit', findLessons);
@@ -329,6 +331,7 @@ window.YTGuide = {
   conflict:(id,note)=>{noteConflicts[id]=note;renderNoteConflict();},
   setScope(scope) {
     if($('#lesson-dialog').open)$('#lesson-dialog').close();
+    editingCollection=null;$('#collection-form').reset();$('#collection-form button').textContent='Create +';
     storageScope=scope;
     authenticated=false;
     saved=read('ytguide.saved.v2',[]);completed=read('ytguide.completed.v2',[]);notes=read('ytguide.notes.v2',{});
@@ -336,7 +339,7 @@ window.YTGuide = {
     noteVersions=read('ytguide.noteVersions.v3',{});noteConflicts={};normalizeWorkspace();
     updateWorkspace();renderResults();
   },
-  applyCloud(data) {
+  applyCloud(data,pending=[]) {
     lessonIndex=Object.fromEntries(data.lessons.map(r=>[r.video_id,r.metadata]));
     saved=data.lessons.filter(r=>r.saved).map(r=>r.metadata);
     completed=data.lessons.filter(r=>r.completed).map(r=>r.video_id);
@@ -347,11 +350,30 @@ window.YTGuide = {
     collections=data.collections;bookmarks={};memberships={};
     for(const b of data.bookmarks)(bookmarks[b.video_id]||=[]).push(b);
     for(const m of data.memberships)(memberships[m.video_id]||=[]).push(m.collection_id);
+    // Overlay durable operations onto the latest cloud snapshot, including offline deletes.
+    for(const item of pending){
+      const id=item.video?.id;
+      if(validVideo(item.video))lessonIndex[id]=item.video;
+      if(item.action==='lesson'&&id){
+        if(typeof item.patch.saved==='boolean')saved=item.patch.saved?[...saved.filter(v=>v.id!==id),item.video]:saved.filter(v=>v.id!==id);
+        if(typeof item.patch.completed==='boolean')completed=item.patch.completed?[...new Set([...completed,id])]:completed.filter(v=>v!==id);
+        if(Number.isSafeInteger(item.patch.position))positions[id]=item.patch.position;
+      }
+      if(item.action==='note'&&id){notes[id]=item.content;noteVersions[id]=item.version;}
+      if(item.action==='createCollection'&&!collections.some(c=>c.id===item.id))collections.push({id:item.id,name:item.name});
+      if(item.action==='renameCollection'){const c=collections.find(c=>c.id===item.id);if(c)c.name=item.name;}
+      if(item.action==='deleteCollection'){collections=collections.filter(c=>c.id!==item.id);for(const key of Object.keys(memberships))memberships[key]=memberships[key].filter(c=>c!==item.id);}
+      if(item.action==='membership'&&id)memberships[id]=item.add?[...new Set([...(memberships[id]||[]),item.collectionId])]:(memberships[id]||[]).filter(c=>c!==item.collectionId);
+      if(item.action==='bookmark'&&id)bookmarks[id]=[...(bookmarks[id]||[]).filter(b=>b.id!==item.id),{id:item.id,seconds:item.seconds,label:item.label}];
+      if(item.action==='deleteBookmark')for(const key of Object.keys(bookmarks))bookmarks[key]=bookmarks[key].filter(b=>b.id!==item.id);
+    }
+    write('ytguide.noteVersions.v3',noteVersions);
     write('ytguide.saved.v2',saved);write('ytguide.completed.v2',completed);write('ytguide.notes.v2',notes);write('ytguide.lessons.v3',lessonIndex);persistExtras();
     updateWorkspace();renderResults();
   },
-  noteSynced(id,content,version) {
-    noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);
+  noteSynced(id,content,version,own=false) {
+    // A worker tab must not advance the base of another tab's unseen draft.
+    if(own||notes[id]===content){noteVersions[id]=version;write('ytguide.noteVersions.v3',noteVersions);}
     if(currentVideo?.id===id&&notes[id]===content)$('#note-status').textContent='Cloud synced ✓';
   },
   flushNote(){window.dispatchEvent(new Event('ytguide:flush-sync'));},
@@ -383,7 +405,7 @@ $('#collection-form').addEventListener('submit',event=>{
   if(!name)return;
   if(collections.some(c=>c.name===name&&c.id!==editingCollection)){toast('A collection with that name already exists.');return;}
   if(editingCollection){
-    const c=collections.find(c=>c.id===editingCollection);c.name=name;emitMutation('renameCollection',{id:c.id,name});
+    const c=collections.find(c=>c.id===editingCollection);if(!c){editingCollection=null;toast('That collection is no longer available. Create a new one.');return;}c.name=name;emitMutation('renameCollection',{id:c.id,name});
   }else{
     if(collections.length>=50){toast('You can create up to 50 collections.');return;}
     const c={id:crypto.randomUUID(),name};collections.push(c);emitMutation('createCollection',c);
@@ -403,6 +425,7 @@ document.addEventListener('click',event=>{
     const id=b.dataset.deleteCollection;
     if(!confirm('Delete this collection? Your lessons, notes and progress will stay.'))return;
     if($('#workspace-filter').value==='collection:'+id)$('#workspace-filter').value='saved';
+    if(editingCollection===id){editingCollection=null;$('#collection-form').reset();$('#collection-form button').textContent='Create +';}
     collections=collections.filter(c=>c.id!==id);for(const key of Object.keys(memberships))memberships[key]=memberships[key].filter(v=>v!==id);
     persistExtras();emitMutation('deleteCollection',{id});updateWorkspace();
   }
@@ -499,9 +522,8 @@ function restoreNavigation(){
   const view=location.hash.slice(1);
   currentView=['discover','workspace','about'].includes(view)?view:'discover';
 }
-let filterDebounce;
 for(const name of ['topic','language','source','length'])$('#'+name).addEventListener('change',()=>{updateGoalRequirement();persistNavigation();clearTimeout(filterDebounce);filterDebounce=setTimeout(()=>findLessons(),350);});
-$('#goal').addEventListener('input',persistNavigation);
+$('#goal').addEventListener('input',()=>persistNavigation());
 window.addEventListener('popstate',()=>{restoreNavigation();updateGoalRequirement();showView(currentView,false);if(currentView==='discover')findLessons();});
 
 function youtubeSearchURL(){const topic=$('#topic');return 'https://www.youtube.com/results?'+new URLSearchParams({search_query:(topic.value==='custom'?'':topic.selectedOptions[0].textContent+' ')+$('#goal').value+' tutorial'+($('#language').value==='hi'?' in Hindi':'')});}

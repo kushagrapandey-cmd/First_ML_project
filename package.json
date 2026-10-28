@@ -7,13 +7,15 @@
     "test": "python -m unittest discover -s tests -v",
     "check": "node --check public/app.js && node --check public/account.js && node --check api/workspace.js && node --check api/auth.js && node --check public/feedback.js && node --check api/feedback.js",
     "build": "node scripts/build.mjs",
-    "test:server": "node --test tests/*.test.mjs"
+    "test:server": "node --test tests/*.test.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.2.0",
     "jose": "6.2.13"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "esbuild": "0.28.2",
     "jsdom": "30.1.3",
     "pg": "8.16.3"
