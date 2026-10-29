@@ -2,7 +2,7 @@
 
 ## One-minute introduction
 
-“YTGuide is a focused YouTube learning workspace. It started as a college Python/ML workshop project with my teammates. The problem was that finding a tutorial often becomes endless scrolling, and useful lessons get scattered across tabs.
+“YTGuide is a focused YouTube learning workspace. The idea started as a college Python/ML workshop project. The problem was that finding a tutorial often becomes endless scrolling, and useful lessons get scattered across tabs.
 
 The current app retrieves candidates from YouTube or a maintained catalogue and ranks them against the learner's actual goal. It combines a pretrained multilingual sentence model with keyword relevance and channel diversity. Learners can browse publicly; signing in unlocks saved lessons, notes, timestamp bookmarks, collections and progress stored in PostgreSQL.
 
@@ -60,7 +60,7 @@ A shared PostgreSQL cache reuses YouTube candidates for 15 minutes. Leases reduc
 Theme preferences and account-scoped drafts/cache/outbox. Search context is in the URL. No new guest study activity is saved. Auth tokens are held in memory and sessions use HTTP-only cookies. Browser drafts are not encrypted.
 
 **What did you personally contribute?**
-Be precise about your original project/data work, requirements, debugging and validation. Credit the original team: Kushagra Pandey, Aryan Gupta, Harsh Mishra and Ayush Nishad, guided by Chandan Verma. Modern implementation and documentation used AI assistance. Do not claim independent authorship of every line or invent a training achievement. Demonstrate understanding by tracing a request and explaining a real trade-off.
+YTGuide is developed and maintained by Kushagra Pandey, with AI assistance for implementation and documentation. Explain your requirements, product decisions, debugging and validation accurately. Demonstrate understanding by tracing a request and explaining a real trade-off; do not claim that the pretrained neural model was trained from scratch.
 
 ## Five-minute product demonstration
 

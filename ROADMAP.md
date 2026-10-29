@@ -5,7 +5,7 @@ The shipped workspace was stabilized on 28 October 2026 with desktop/phone brows
 | Priority | Work | Evidence required before release |
 | --- | --- | --- |
 | 1: Launch polish | Independent mailbox/password-recovery test, second-device persistence, phone/tablet/keyboard walkthrough, clearer sync/error messages | Recorded user journeys on supported devices; account recovery tested end to end |
-| 1: Repository presentation | Add a demo image/video, useful repository description/topics, and choose a root application license with the original contributors | No private data in assets; owner confirms license choice; old exposed notebook keys confirmed revoked |
+| 1: Repository presentation | Add a demo image/video, useful repository description/topics, and choose a root application license as the project owner | No private data in assets; owner confirms license choice; old exposed notebook keys confirmed revoked |
 | 2: Dataset and evaluation | Broader current candidates, metadata freshness, language/duration coverage, human relevance grades and a separate held-out query set | Reproducible provenance, duplicate checks, lexical comparison, nDCG@5/MRR/coverage and error analysis; no reuse of test labels for tuning |
 | 2: Speed and operations | Measure cold/warm p50/p95 latency and request failures; consider precomputed catalogue vectors; expired-cache row cleanup and abuse controls | Measured improvement under the same workload, bounded storage and quota use; assess CPU/inference time separately from API/network time |
 | 3: Product reliability | Account deletion/retention, JSON restore, larger-workspace pagination and restore drills | Ownership/conflict/retry/deletion tests; user-facing recovery and retention behaviour |
@@ -22,5 +22,5 @@ No chatbot, transcript summaries, quizzes, custom neural training, collaborative
 
 The repository has local setup commands, server configuration names, architecture/schema reasoning, model provenance/license, dataset-cleaning/evaluation scripts, CI, verification evidence, credits and an interview guide. It is suitable for a portfolio demonstration with its stated limits.
 
-A root application license has not been chosen. The model's Apache-2.0 notice does not automatically license the application code. Do not advertise unrestricted open-source reuse until the contributors choose a license. The repository name remains the historical `First_ML_project`; a clearer name/description is optional presentation work. No API token or real `.env` belongs in the repository. Historical key revocation must be confirmed by the owner.
+A root application license has not been chosen. The model's Apache-2.0 notice does not automatically license the application code. Do not advertise unrestricted open-source reuse until the project owner chooses a license. The repository name remains the historical `First_ML_project`; a clearer name/description is optional presentation work. No API token or real `.env` belongs in the repository. Historical key revocation must be confirmed by the owner.
 

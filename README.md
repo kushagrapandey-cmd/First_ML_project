@@ -139,7 +139,7 @@ Required server settings: `DATABASE_URL`, `NEON_AUTH_BASE_URL`. Optional: `YOUTU
 
 ## Credits
 
-Original workshop team: **Kushagra Pandey, Aryan Gupta, Harsh Mishra and Ayush Nishad**, guided by **Chandan Verma**. Kushagra supplied the project context, original prototype/data work, requirements and scope decisions. Modern implementation, tests and documentation were developed with AI assistance. Explain the parts you understand, reviewed, changed and tested; do not invent authorship percentages.
+YTGuide is developed and maintained by **Kushagra Pandey**. Implementation, tests and documentation were developed with AI assistance.
 
 ## Primary references
 

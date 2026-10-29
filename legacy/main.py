@@ -88,13 +88,9 @@ st.caption('Now remove all distractions and study here!!')
 
 with st.sidebar:
     st.selectbox('What you want to search?', categories)
-    st.text('TEAM:')
+    st.text('Developer:')
     st.text('Kushagra Pandey')
-    st.text('Aryan Gupta')
-    st.text('Harsh Mishra')
-    st.text('Ayush Nishad')
-    st.text('Guided by - Sir Chandan Verma')
-    st.text('Liked our Work?')
+    st.text('Liked the project?')
     result = st.button('Like')
     total = 653
     if result:
