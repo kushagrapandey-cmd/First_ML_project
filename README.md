@@ -69,6 +69,55 @@ The normalized goal is part of the live retrieval query **and cache key**. Postg
 
 The current semantic ranker runs an actual pretrained neural sentence model, not a generative LLM. It does not watch videos, learn from private notes, judge teaching quality or promise “the best five videos.” No paid inference API is used. `ranking=lexical` selects the classical comparison; any inference fallback is labelled in the response and source notice.
 
+
+### Algorithm walkthrough: original prototype and current application
+
+YTGuide is a **content-based retrieval and ranking system**, not a clustering system. Topic categories are not learned clusters. The score estimates relevance to a goal, not teaching quality or a probability that a learner will succeed.
+
+#### Original notebook: Bag of Words and cosine similarity
+
+In `legacy/YTmodel.ipynb`, titles are processed with Porter stemming, then `CountVectorizer(max_features=155, stop_words='english')` creates word-count vectors with a vocabulary capped at 155 terms. Common English words are removed; word order is discarded. Stemming reduces related word forms, but does not understand their meaning.
+
+The notebook computes `cosine_similarity(vector)` across the title vectors and exports the similarity matrix. In `legacy/main.py`, selecting a topic finds the first row whose `OnSearching` value matches that topic. The app sorts that row's similarities, skips the first entry assuming it is the reference itself, and takes the next five. This is reference-video-to-video similarity, not free-text query ranking, neural training or K-means clustering. Skipping the first item is a legacy assumption rather than explicit ID-based self-exclusion.
+
+Bag of Words was a simple, inexpensive and inspectable baseline for a small prototype. Its limits include vocabulary truncation, weak handling of synonyms, no word-order representation and reference-row dependence.
+
+#### Current pipeline: retrieve, filter, rank, diversify
+
+1. **Normalize the goal.** Unicode normalization, case folding and whitespace cleanup standardize text. A small alias map normalizes selected Hindi technology spellings, such as पायथन to python. This is not a general translation system.
+2. **Retrieve candidates.** Live search sends the selected subject and actual goal to the YouTube API, requesting at most 25 search candidates, then fetches details. Alternatively, use the maintained catalogue. YouTube performs its own initial retrieval; our ranker reranks this bounded candidate set, not every video on YouTube.
+3. **Apply constraints.** Catalogue candidates obey subject/language selection. Live candidates must be public, embeddable and not live/upcoming; known durations below three minutes are excluded. Selected languages require matching declared language metadata. Short means at most 1,800 seconds; long means more than 1,800. Explicit technology words constrain candidates to metadata matching at least one requested technology anchor, not necessarily every technology in a multi-technology query.
+4. **Calculate lexical relevance.** Our Python code implements TF-IDF directly; the production path does not call scikit-learn's vectorizer. It tokenizes title, tags and description, removes a small custom stop-word set, and fits document frequencies on the current candidates. It does not apply the notebook's Porter stemming. For a term appearing `count` times, TF is `1 + ln(count)`. IDF is `ln((1 + N)/(1 + df)) + 1`, where N is the candidate count and df is the number of candidate documents containing the term. Multiply TF by IDF, L2-normalize each vector and take the query/document dot product. Query terms absent from the candidate vocabulary contribute nothing. TF-IDF rewards distinctive matching terms and logarithmic TF limits repetition's influence.
+5. **Calculate semantic relevance.** The pretrained `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` encoder represents the goal and each lesson's title/tags/description as dense 384-dimensional vectors. The tokenizer truncates inputs to 128 tokens. Quantized ONNX inference runs on server CPU. Attention-mask-aware mean pooling averages token representations while excluding padding; L2 normalization gives each resulting vector unit length. A dot product between unit vectors equals cosine similarity. This can match paraphrases and supported cross-language meaning, but can still misunderstand technical distinctions or omit information beyond the input limit.
+6. **Blend scores.** Exclude semantic similarities below 0.30, then use `base = 0.8 * semantic + 0.2 * lexical`. A hypothetical semantic score of 0.80 and lexical score of 0.50 gives 0.74. This is a heuristic relevance score, not 74% accuracy or confidence. The weights and threshold are design choices, not proven optimal values.
+7. **Diversify and select.** Greedily select the candidate with the highest `base / (1 + 0.15 * already_selected_from_channel)`, update that channel's count, and repeat until five lessons or no eligible candidates remain. The pure lexical path uses a 0.25 penalty. The response reports the base similarity, while the adjusted score controls selection order. Diversity is a soft preference, not a one-video-per-channel rule.
+
+#### Why combine these approaches?
+
+| Choice | Benefit | Cost or limitation |
+| --- | --- | --- |
+| TF-IDF | Transparent exact-word baseline; useful for technical vocabulary | Weak synonym/cross-language handling; candidate-dependent weights |
+| Multilingual MiniLM | Meaning-based matching and supported multilingual input without task-specific neural training | Model package, CPU/memory and cold-start costs; semantic mistakes |
+| Cosine similarity | Compares vector direction after normalization | Measures representation similarity, not correctness or quality |
+| Weighted hybrid | Preserves a lexical signal alongside semantic matching | Scores are not calibrated; coefficients need broader evaluation |
+| Technology constraints and filters | Respect concrete learner requirements | Missing metadata or narrow anchors can exclude relevant lessons |
+| Channel penalty | Encourages educator variety | Can rank a slightly less relevant lesson earlier |
+| ONNX CPU inference | No separate paid inference API; quantized model | Hosting compute still costs resources and consumes free-tier allowances |
+
+No vector database or approximate-nearest-neighbour index is used: direct comparisons fit the small candidate sets. Embeddings are cached in a bounded per-process cache of 1,024 texts; candidate retrieval uses the separate shared PostgreSQL cache. Caching is not model learning.
+
+If semantic inference is unavailable, keyword ranking is labelled; explicit live-provider failure returns an error, while Automatic source can use a labelled catalogue fallback. Fewer than five results are valid when filters or relevance checks remove candidates.
+
+#### Dataset, evaluation and interview boundaries
+
+The active catalogue has 54 metadata-checked lessons. The cleaned legacy file preserves 139 valid unique candidates separately; neither is a labelled neural training set. Live search provides additional candidates. The encoder uses pretrained weights and does not learn from account history, completion or private notes.
+
+The documented 24-query development smoke test placed the expected topic first for 22/24 hybrid queries versus 21/24 lexical queries; MRR@5 was 0.958 versus 0.889. MRR averages the reciprocal of the first relevant result's rank (zero if absent from the top five). This small manually authored development set is not a held-out independent benchmark, general accuracy claim or evidence of better learning outcomes.
+
+A precise interview explanation: “The prototype used Bag of Words and reference-video cosine similarity. The current app retrieves candidates from YouTube or a catalogue, filters them, and reranks the learner's actual query using pretrained multilingual embeddings plus TF-IDF, followed by a soft channel-diversity penalty. It estimates metadata relevance and does not judge teaching quality.”
+
+Code: [original notebook](legacy/YTmodel.ipynb), [legacy selection](legacy/main.py), [retrieval and TF-IDF](api/recommend.py), [normalization](lib/query.py), [semantic ranking](lib/semantic.py). Background: [scikit-learn text features](https://scikit-learn.org/stable/modules/feature_extraction.html), [Sentence Transformers similarity](https://sbert.net/docs/sentence_transformer/usage/semantic_textual_similarity.html).
+
 ### Where data lives
 
 | Data | Anonymous visitor | Signed-in learner |
